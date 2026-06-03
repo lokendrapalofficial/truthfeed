@@ -83,6 +83,15 @@ function decodeGoogleNewsUrl(googleUrl: string): string | null {
   }
 }
 
+// Checks if the image URL is a Google News logo or hosted on Google domains
+const isGoogleImage = (url: string): boolean => {
+  const lowUrl = url.toLowerCase();
+  return lowUrl.includes("googleusercontent.com") || 
+         lowUrl.includes("gstatic.com") || 
+         lowUrl.includes("google.com") ||
+         (lowUrl.includes("logo") && lowUrl.includes("google"));
+};
+
 export default function NewsImage({ url, title, sourceName, className = "w-full h-full object-cover" }: NewsImageProps) {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -115,8 +124,10 @@ export default function NewsImage({ url, title, sourceName, className = "w-full 
         const data = await res.json();
         
         if (isMounted) {
-          if (data?.data?.image?.url) {
-            setImageUrl(data.data.image.url);
+          const imgUrl = data?.data?.image?.url;
+          // Only use the fetched image if it's not a Google News logo / Google domain image
+          if (imgUrl && !isGoogleImage(imgUrl)) {
+            setImageUrl(imgUrl);
           } else {
             setError(true);
           }
