@@ -4,7 +4,7 @@ import React from "react";
 import Link from "next/link";
 import { Sparkles } from "lucide-react";
 import { motion } from "framer-motion";
-import NewsImage from "@/components/NewsImage";
+import PublisherVisual from "@/components/PublisherVisual";
 
 export type RatingType = "TRUE" | "FALSE" | "MIXED" | "UNVERIFIED";
 
@@ -112,12 +112,7 @@ export default function NewsCard({ article, viewMode = "grid" }: NewsCardProps) 
       >
         <div className="w-32 h-32 rounded-lg overflow-hidden bg-stone-50 dark:bg-slate-900 shrink-0 border border-stone-100 dark:border-slate-850 relative">
           <Link href={`/article/${article.id}`} className="block w-full h-full">
-            <NewsImage
-              url={article.url}
-              title={article.title}
-              sourceName={article.sourceName}
-              className="w-full h-full object-cover hover:scale-105 transition-transform duration-300"
-            />
+            <PublisherVisual sourceName={article.sourceName} viewMode="list" />
           </Link>
         </div>
         <div className="flex-1 flex flex-col justify-between py-0.5 min-w-0">
@@ -165,12 +160,7 @@ export default function NewsCard({ article, viewMode = "grid" }: NewsCardProps) 
       <div>
         <div className="aspect-video w-full overflow-hidden bg-stone-50 dark:bg-slate-900 relative">
           <Link href={`/article/${article.id}`} className="block w-full h-full">
-            <NewsImage
-              url={article.url}
-              title={article.title}
-              sourceName={article.sourceName}
-              className="w-full h-full object-cover hover:scale-105 transition-transform duration-300"
-            />
+            <PublisherVisual sourceName={article.sourceName} viewMode="grid" />
           </Link>
         </div>
         <div className="p-4">

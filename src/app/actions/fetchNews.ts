@@ -30,31 +30,6 @@ function getCategoryImageUrl(title: string): string {
   return "https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=800&q=80"; // World / General fallback
 }
 
-function decodeGoogleNewsUrl(googleUrl: string): string | null {
-  try {
-    const urlObj = new URL(googleUrl);
-    if (!urlObj.hostname.includes("news.google.com")) return googleUrl;
-    
-    const pathname = urlObj.pathname;
-    const parts = pathname.split('/');
-    const base64Str = parts.find(p => p.startsWith('CBMi') || p.length > 50);
-    if (!base64Str) return googleUrl;
-    
-    const cleanedB64 = base64Str.split('?')[0];
-    const buffer = Buffer.from(cleanedB64, 'base64');
-    const utf8Str = buffer.toString('utf8');
-    
-    const httpIndex = utf8Str.indexOf('http');
-    if (httpIndex === -1) return googleUrl;
-    
-    const rest = utf8Str.substring(httpIndex);
-    const urlMatch = rest.match(/https?:\/\/[a-zA-Z0-9_\-\.\/\?&\+=\#~%!*':;(),]+/);
-    return urlMatch ? urlMatch[0] : googleUrl;
-  } catch (e) {
-    return googleUrl;
-  }
-}
-
 export async function fetchNews() {
   try {
     const parser = new Parser();
@@ -73,7 +48,7 @@ export async function fetchNews() {
 
       // Extract details
       const title = item.title;
-      const url = decodeGoogleNewsUrl(item.link) || item.link;
+      const url = item.link;
       const summary = item.contentSnippet || "";
       const content = item.content || item.contentSnippet || "";
       const sourceName = item.source?.text || item.creator || "Google News";

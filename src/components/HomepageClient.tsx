@@ -8,7 +8,7 @@ import { useTheme } from "next-themes";
 import { fetchNews } from "@/app/actions/fetchNews";
 import BackToTop from "@/components/BackToTop";
 import NewsCard from "@/components/NewsCard";
-import NewsImage from "@/components/NewsImage";
+import PublisherVisual from "@/components/PublisherVisual";
 
 interface SourceData {
   id: string;
@@ -309,13 +309,8 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
                   <div className="lg:col-span-8 flex flex-col justify-between border-b lg:border-b-0 lg:border-r border-gray-200 dark:border-slate-700 pb-6 lg:pb-0 lg:pr-8">
                     <div className="space-y-4">
                       <div className="aspect-video w-full rounded-lg overflow-hidden bg-gray-100 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 relative">
-                        <Link href={`/article/${heroStory.id}`} className="block w-full h-full">
-                          <NewsImage
-                            url={heroStory.url}
-                            title={heroStory.title}
-                            sourceName={heroStory.sourceName}
-                            className="w-full h-full object-cover hover:scale-101 transition-transform duration-300"
-                          />
+                        <Link href={`/article/${heroStory.id}`} className="block w-full h-full hover:scale-[1.01] transition-transform duration-300">
+                          <PublisherVisual sourceName={heroStory.sourceName} viewMode="hero" />
                         </Link>
                       </div>
                       <h3 className="text-2xl font-extrabold tracking-tight text-gray-950 dark:text-slate-100 leading-tight hover:text-gray-700 dark:hover:text-slate-300 transition-colors">
