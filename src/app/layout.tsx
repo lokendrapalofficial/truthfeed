@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter, Lora } from "next/font/google";
 import "./globals.css";
 import Providers from "@/components/Providers";
+import ThemeProvider from "@/components/ThemeProvider";
 
 const fontSans = Inter({
   variable: "--font-sans",
@@ -29,9 +30,12 @@ export default function RootLayout({
     <html
       lang="en"
       className={`${fontSans.variable} ${fontSerif.variable} h-full antialiased font-sans`}
+      suppressHydrationWarning
     >
-      <body className="min-h-full flex flex-col bg-zinc-50 text-zinc-900">
-        <Providers>{children}</Providers>
+      <body className="min-h-full flex flex-col bg-white text-gray-900 transition-colors duration-300 dark:bg-slate-900 dark:text-slate-100">
+        <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+          <Providers>{children}</Providers>
+        </ThemeProvider>
       </body>
     </html>
   );

@@ -1,364 +1,431 @@
 "use client";
 
-import React, { useState, useMemo, useTransition } from "react";
-import Navbar from "@/components/Navbar";
-import NewsCard, { ArticleMock } from "@/components/NewsCard";
-import { Filter, CheckCircle, XCircle, AlertCircle, HelpCircle, FileText, Activity, Users, Database, RefreshCw, BookOpen } from "lucide-react";
-import { fetchNews } from "@/app/actions/fetchNews";
+import React, { useState, useMemo, useTransition, useEffect } from "react";
 import Link from "next/link";
+import { Search, RefreshCw, User, LogIn, LogOut, Sun, Moon, LayoutGrid, List } from "lucide-react";
+import { useSession, signIn, signOut } from "next-auth/react";
+import { useTheme } from "next-themes";
+import { fetchNews } from "@/app/actions/fetchNews";
+import BackToTop from "@/components/BackToTop";
+import NewsCard from "@/components/NewsCard";
+import NewsImage from "@/components/NewsImage";
+
+interface SourceData {
+  id: string;
+  name: string;
+  bias: string;
+  credibility: string;
+  description?: string | null;
+}
 
 interface HomepageClientProps {
   initialArticles: any[];
+  initialSources: SourceData[];
 }
 
+const CATEGORIES = [
+  { id: "top", label: "Top Stories" },
+  { id: "foryou", label: "For You" },
+  { id: "us", label: "U.S." },
+  { id: "world", label: "World" },
+  { id: "business", label: "Business" },
+  { id: "tech", label: "Technology" },
+  { id: "science", label: "Science" },
+  { id: "health", label: "Health" },
+];
+
 export default function HomepageClient({ initialArticles }: HomepageClientProps) {
+  const { data: session } = useSession();
+  const { resolvedTheme, setTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [activeTab, setActiveTab] = useState("all");
-  const [selectedRating, setSelectedRating] = useState<string>("ALL");
+  const [activeCategory, setActiveCategory] = useState("top");
+  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [isPending, startTransition] = useTransition();
   const [refreshMessage, setRefreshMessage] = useState<string | null>(null);
 
-  const articles: ArticleMock[] = useMemo(() => {
-    return initialArticles.map((art) => ({
-      id: art.id,
-      title: art.title,
-      url: `/article/${art.id}`,
-      content: art.content,
-      summary: art.summary || art.content || "",
-      sourceName: art.sourceName,
-      publishedAt: art.publishedAt.toISOString ? art.publishedAt.toISOString() : String(art.publishedAt),
-      factChecks: art.factChecks ? art.factChecks.map((fc: any) => ({
-        id: fc.id,
-        claimText: fc.claimText,
-        verdict: fc.verdict,
-        rating: fc.rating,
-        sourceOrganization: fc.sourceOrganization,
-        factCheckUrl: fc.factCheckUrl,
-      })) : [],
-      source: art.source,
-    }));
-  }, [initialArticles]);
+  useEffect(() => {
+    setMounted(true);
+    // Load persisted view mode preference
+    const savedView = localStorage.getItem("truthfeed-viewmode");
+    if (savedView === "grid" || savedView === "list") {
+      setViewMode(savedView);
+    }
+  }, []);
+
+  const handleViewModeChange = (mode: "grid" | "list") => {
+    setViewMode(mode);
+    localStorage.setItem("truthfeed-viewmode", mode);
+  };
 
   const handleRefresh = () => {
     startTransition(async () => {
-      setRefreshMessage("Fetching latest Google News RSS...");
+      setRefreshMessage("Syncing feed...");
       const result = await fetchNews();
       if (result.success) {
-        setRefreshMessage(`Successfully synchronized ${result.count} articles!`);
-        setTimeout(() => setRefreshMessage(null), 4000);
+        setRefreshMessage(`Synced ${result.count} articles`);
+        setTimeout(() => setRefreshMessage(null), 3000);
       } else {
         setRefreshMessage(`Sync failed: ${result.error || result.message}`);
-        setTimeout(() => setRefreshMessage(null), 5000);
+        setTimeout(() => setRefreshMessage(null), 4000);
       }
     });
   };
 
+  // Helper to map search categorizations based on text keywords
+  const getArticleCategory = (title: string, summary: string): string => {
+    const t = `${title} ${summary}`.toLowerCase();
+    if (t.match(/\b(court|senate|election|trump|biden|harris|law|government|president|policy|democrat|republican|tax|debt|tariff|white house|congress|politics|us|u\.s\.)\b/)) return "us";
+    if (t.match(/\b(apple|google|microsoft|ai|meta|nvidia|intel|openai|semiconductor|chip|cybersecurity|software|tech|technology|phone|quantum|robot)\b/)) return "tech";
+    if (t.match(/\b(space|mars|nasa|science|telescope|scientific|gene|dna|chemistry|physics|universe|planet|galaxy|scientist)\b/)) return "science";
+    if (t.match(/\b(health|cancer|vaccine|virus|covid|fda|medical|disease|drug|outbreak|clinical|hospital|patient)\b/)) return "health";
+    if (t.match(/\b(market|finance|stock|stocks|wall st|economy|economic|business|ceo|company|billion|inflation|fed|rate|interest|bank)\b/)) return "business";
+    return "world";
+  };
+
+  const articles = useMemo(() => {
+    return initialArticles.map((art) => ({
+      id: art.id,
+      title: art.title,
+      url: art.url,
+      content: art.content,
+      summary: art.summary || art.content || "",
+      imageUrl: art.imageUrl,
+      sourceName: art.sourceName,
+      publishedAt: art.publishedAt,
+      factChecks: art.factChecks || [],
+      source: art.source,
+    }));
+  }, [initialArticles]);
+
+  // Combined search, category, and audit rating filter logic
   const filteredArticles = useMemo(() => {
     return articles.filter((article) => {
+      // 1. Search Query Match
       const matchesSearch =
         article.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
         article.summary.toLowerCase().includes(searchQuery.toLowerCase()) ||
         article.sourceName.toLowerCase().includes(searchQuery.toLowerCase());
       if (!matchesSearch) return false;
-      if (activeTab === "fact-checks") {
-        if (!article.factChecks || article.factChecks.length === 0) return false;
+
+      // 2. Category Match
+      if (activeCategory !== "top" && activeCategory !== "foryou") {
+        const cat = getArticleCategory(article.title, article.summary);
+        if (cat !== activeCategory) return false;
       }
-      if (selectedRating !== "ALL") {
-        const factCheck = article.factChecks?.[0];
-        if (selectedRating === "UNVERIFIED") return !factCheck || factCheck.rating === "UNVERIFIED";
-        return factCheck?.rating === selectedRating;
-      }
+
       return true;
     });
-  }, [articles, searchQuery, activeTab, selectedRating]);
+  }, [articles, searchQuery, activeCategory]);
 
-  const stats = useMemo(() => {
-    const total = articles.length;
-    const trueCount = articles.filter(a => a.factChecks?.[0]?.rating === "TRUE").length;
-    const falseCount = articles.filter(a => a.factChecks?.[0]?.rating === "FALSE").length;
-    const mixedCount = articles.filter(a => a.factChecks?.[0]?.rating === "MIXED").length;
-    const unverifiedCount = articles.filter(a => !a.factChecks || a.factChecks.length === 0 || a.factChecks[0]?.rating === "UNVERIFIED").length;
-    return { total, trueCount, falseCount, mixedCount, unverifiedCount };
-  }, [articles]);
+  // Helper to format date cleanly (e.g. "3 hours ago" or date string)
+  const formatTimeAgo = (dateStr: string) => {
+    try {
+      const date = new Date(dateStr);
+      const now = new Date();
+      const diffMs = now.getTime() - date.getTime();
+      const diffHrs = Math.floor(diffMs / (1000 * 60 * 60));
+      
+      if (diffHrs < 1) {
+        const diffMins = Math.floor(diffMs / (1000 * 60));
+        return `${diffMins}m ago`;
+      }
+      if (diffHrs < 24) {
+        return `${diffHrs}h ago`;
+      }
+      return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    } catch {
+      return dateStr;
+    }
+  };
+
+  // Top Stories Grid Mappings
+  const heroStory = filteredArticles.length > 0 ? filteredArticles[0] : null;
+  const relatedHeroStories = filteredArticles.length > 1 ? filteredArticles.slice(1, 4) : [];
+  const listFeedArticles = filteredArticles.length > 4 ? filteredArticles.slice(4) : filteredArticles.slice(1);
 
   return (
-    <div className="flex flex-col min-h-screen bg-zinc-50 text-zinc-900">
-      <Navbar
-        searchQuery={searchQuery}
-        setSearchQuery={setSearchQuery}
-        activeTab={activeTab}
-        setActiveTab={setActiveTab}
-      />
-
-      <main className="flex-1 mx-auto max-w-7xl w-full px-4 sm:px-6 lg:px-8 py-8">
-        {activeTab === "about" ? (
-          /* About Platform Tab */
-          <div className="max-w-3xl mx-auto py-12">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-zinc-900 text-white mb-6">
-              <span className="font-serif text-lg font-bold tracking-tight">TF</span>
-            </div>
-            <h1 className="font-serif text-4xl font-black tracking-tight mb-4 text-zinc-900">
-              About TruthFeed
-            </h1>
-            <p className="text-lg leading-relaxed text-zinc-600 mb-8">
-              TruthFeed is an open-source news aggregation and integrity validation platform. We believe that a well-informed public is the cornerstone of democratic society. By tracking major news claims and matching them against verified fact-checking institutions, we help citizens distinguish signal from noise.
-            </p>
-
-            <h2 className="font-serif text-2xl font-bold mb-3 text-zinc-900">Our Core Pillars</h2>
-            <div className="grid gap-6 sm:grid-cols-2 mb-12">
-              <div className="p-5 border border-zinc-200 rounded-xl bg-white shadow-sm">
-                <h3 className="font-bold text-zinc-900 mb-1.5 flex items-center gap-2">
-                  <CheckCircle className="h-4 w-4 text-emerald-600" />
-                  Transparency
-                </h3>
-                <p className="text-sm text-zinc-600">
-                  Every verdict link is directly mapped to the original, extensive analysis from professional, accredited verification organizations.
-                </p>
+    <div className="flex flex-col min-h-screen bg-white dark:bg-slate-900 text-gray-900 dark:text-slate-100 font-sans antialiased transition-colors duration-300">
+      
+      {/* Google News Navigation Header */}
+      <header className="sticky top-0 z-50 border-b border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900/95 backdrop-blur-sm transition-colors duration-300">
+        <div className="mx-auto max-w-6xl px-4 sm:px-6">
+          <div className="flex h-16 items-center justify-between gap-4">
+            
+            {/* Left: TruthFeed Logo */}
+            <div
+              className="cursor-pointer flex items-center gap-1.5 select-none"
+              onClick={() => {
+                setActiveCategory("top");
+                setSearchQuery("");
+              }}
+            >
+              <div className="flex h-7 w-7 items-center justify-center rounded bg-gray-900 dark:bg-slate-100 text-white dark:text-slate-900 font-bold text-sm tracking-tight transition-colors duration-300">
+                T
               </div>
-              <div className="p-5 border border-zinc-200 rounded-xl bg-white shadow-sm">
-                <h3 className="font-bold text-zinc-900 mb-1.5 flex items-center gap-2">
-                  <Activity className="h-4 w-4 text-zinc-500" />
-                  Real-time Auditing
-                </h3>
-                <p className="text-sm text-zinc-600">
-                  We monitor viral headlines and claims, making it effortless to search or browse current fact-checks in a single streamlined interface.
-                </p>
-              </div>
+              <span className="text-xl font-bold tracking-tight text-gray-900 dark:text-slate-100">
+                TruthFeed
+              </span>
             </div>
 
-            <h2 className="font-serif text-2xl font-bold mb-3 text-zinc-900">Technology Stack</h2>
-            <p className="text-sm text-zinc-600 mb-6">
-              Our initial platform build leverages high-performance, modern frameworks to ensure security, rapid response, and absolute correctness:
-            </p>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-              {[
-                { label: "Framework", value: "Next.js 14+" },
-                { label: "Styling", value: "Tailwind CSS" },
-                { label: "Database", value: "Prisma & SQLite" },
-                { label: "Icons", value: "Lucide React" },
-              ].map(({ label, value }) => (
-                <div key={label} className="p-4 text-center rounded-lg border border-zinc-200 bg-white shadow-sm">
-                  <p className="text-xs text-zinc-400 uppercase font-semibold tracking-wider">{label}</p>
-                  <p className="font-serif font-extrabold text-sm text-zinc-900 mt-1">{value}</p>
+            {/* Center: Rounded Search Bar */}
+            <div className="flex-1 max-w-xl relative group mx-2">
+              <div className="absolute inset-y-0 left-4.5 flex items-center pointer-events-none text-gray-400 group-focus-within:text-gray-700 dark:group-focus-within:text-slate-350 transition-colors">
+                <Search className="h-4 w-4" />
+              </div>
+              <input
+                type="text"
+                placeholder="Search for topics, sources and claims"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full h-11 pl-11 pr-4 rounded-full bg-gray-100 dark:bg-slate-800 text-sm text-gray-900 dark:text-slate-100 placeholder-gray-500 dark:placeholder-slate-400 border border-transparent dark:border-slate-700 focus:border-gray-200 dark:focus:border-slate-600 focus:bg-white dark:focus:bg-slate-900 outline-none transition-all duration-300"
+              />
+            </div>
+
+            {/* Right: Profile Actions / Sync Trigger */}
+            <div className="flex items-center gap-3">
+              <button
+                onClick={handleRefresh}
+                disabled={isPending}
+                className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-slate-800 text-gray-500 dark:text-slate-400 hover:text-gray-900 dark:hover:text-slate-100 disabled:text-gray-300 transition-colors cursor-pointer"
+                title="Sync News Feed"
+              >
+                <RefreshCw className={`h-4.5 w-4.5 ${isPending ? "animate-spin" : ""}`} />
+              </button>
+              
+              {/* Theme Toggle Button */}
+              <button
+                onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
+                className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-slate-800 text-gray-500 dark:text-slate-400 hover:text-gray-900 dark:hover:text-slate-100 transition-colors cursor-pointer"
+                title="Toggle theme"
+              >
+                {mounted && resolvedTheme === "dark" ? (
+                  <Sun className="h-4.5 w-4.5" />
+                ) : (
+                  <Moon className="h-4.5 w-4.5" />
+                )}
+              </button>
+
+              {session ? (
+                <div className="flex items-center gap-2">
+                  <span className="hidden md:inline-flex text-xs font-semibold text-gray-600 dark:text-slate-400 bg-gray-100 dark:bg-slate-800 px-3 py-1.5 rounded-full border dark:border-slate-700">
+                    @{session.user?.name}
+                  </span>
+                  <button
+                    onClick={() => signOut()}
+                    className="p-2 rounded-full hover:bg-gray-150 dark:hover:bg-slate-800 text-gray-500 dark:text-slate-400 cursor-pointer"
+                    title="Sign Out"
+                  >
+                    <LogOut className="h-4.5 w-4.5" />
+                  </button>
                 </div>
+              ) : (
+                <button
+                  onClick={() => signIn()}
+                  className="flex h-9 w-9 items-center justify-center rounded-full bg-gray-100 dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-750 text-gray-600 dark:text-slate-400 cursor-pointer transition-colors"
+                  title="Sign In"
+                >
+                  <User className="h-4.5 w-4.5" />
+                </button>
+              )}
+            </div>
+
+          </div>
+
+          {/* Sub-Navigation & View Toggler Wrapper */}
+          <div className="flex items-center justify-between border-t border-gray-100 dark:border-slate-705 bg-white dark:bg-slate-900 transition-colors duration-300">
+            {/* Sub-Navigation Categories Scrollbar */}
+            <div className="flex items-center gap-1.5 overflow-x-auto py-1 no-scrollbar flex-1 mr-4">
+              {CATEGORIES.map((cat) => (
+                <button
+                  key={cat.id}
+                  onClick={() => {
+                    setActiveCategory(cat.id);
+                  }}
+                  className={`px-3 py-2 text-xs font-medium tracking-wide whitespace-nowrap border-b-2 transition-all cursor-pointer ${
+                    activeCategory === cat.id
+                      ? "border-gray-900 dark:border-slate-100 text-gray-955 dark:text-slate-100 font-bold"
+                      : "border-transparent text-gray-500 dark:text-slate-400 hover:text-gray-900 dark:hover:text-slate-100 hover:border-gray-200 dark:hover:border-slate-700"
+                  }`}
+                >
+                  {cat.label}
+                </button>
               ))}
             </div>
+
+            {/* Grid/List View Mode Toggler */}
+            <div className="flex items-center gap-1 shrink-0 border-l border-gray-100 dark:border-slate-800 pl-3 py-1.5">
+              <button
+                onClick={() => handleViewModeChange("grid")}
+                className={`p-1.5 rounded transition-colors cursor-pointer ${
+                  viewMode === "grid"
+                    ? "bg-gray-100 dark:bg-slate-800 text-gray-900 dark:text-slate-100"
+                    : "text-gray-400 dark:text-slate-500 hover:bg-gray-50 dark:hover:bg-slate-850 hover:text-gray-600 dark:hover:text-slate-350"
+                }`}
+                title="Grid View"
+              >
+                <LayoutGrid className="h-4.5 w-4.5" />
+              </button>
+              <button
+                onClick={() => handleViewModeChange("list")}
+                className={`p-1.5 rounded transition-colors cursor-pointer ${
+                  viewMode === "list"
+                    ? "bg-gray-100 dark:bg-slate-800 text-gray-900 dark:text-slate-100"
+                    : "text-gray-400 dark:text-slate-500 hover:bg-gray-50 dark:hover:bg-slate-850 hover:text-gray-600 dark:hover:text-slate-350"
+                }`}
+                title="List View"
+              >
+                <List className="h-4.5 w-4.5" />
+              </button>
+            </div>
           </div>
-        ) : (
-          /* News Feed and Fact Checks Grid View */
-          <div>
-            {/* Hero Banner */}
-            <div className="relative rounded-3xl border border-zinc-200 bg-white p-8 sm:p-12 mb-12 shadow-sm overflow-hidden">
-              <div className="absolute -top-24 -right-24 h-96 w-96 rounded-full bg-zinc-50 blur-3xl" />
-              <div className="absolute -bottom-24 -left-24 h-96 w-96 rounded-full bg-zinc-50 blur-3xl" />
 
-              <div className="relative flex flex-col md:flex-row md:items-center justify-between gap-6">
-                <div className="max-w-2xl">
-                  {/* Full Editorial Masthead — Hero Treatment */}
-                  <div className="mb-8">
-                    <h1 className="font-serif text-4xl sm:text-5xl md:text-6xl font-bold tracking-tight text-zinc-900 leading-none">
-                      TruthFeed
-                    </h1>
-                    <p className="mt-3 font-sans text-base sm:text-lg font-normal tracking-wide text-zinc-500">
-                      Read the news. Know the truth.
-                    </p>
-                  </div>
-                  <p className="text-base sm:text-lg text-zinc-600 leading-relaxed font-normal">
-                    TruthFeed compiles, analyzes, and cross-checks the latest news stories using programmatic Google News RSS parsing and dynamic Gemini AI insights.
-                  </p>
-                </div>
+        </div>
+      </header>
 
-                {/* Refresh Trigger Block */}
-                <div className="shrink-0 flex flex-col items-center md:items-end gap-2">
-                  <button
-                    onClick={handleRefresh}
-                    disabled={isPending}
-                    className="flex items-center justify-center gap-2 h-10 px-5 rounded-full bg-zinc-900 hover:bg-zinc-800 text-white disabled:bg-zinc-200 disabled:text-zinc-400 font-bold uppercase tracking-wider shadow-sm transition-all active:scale-95 duration-200 cursor-pointer text-[10px]"
-                  >
-                    <RefreshCw className={`h-3.5 w-3.5 ${isPending ? "animate-spin" : ""}`} />
-                    <span>{isPending ? "Refreshing..." : "Refresh News"}</span>
-                  </button>
-                  {refreshMessage && (
-                    <span className="text-[10px] font-semibold text-zinc-500 bg-zinc-100 px-2.5 py-1 rounded-full border border-zinc-200 transition-opacity duration-300">
-                      {refreshMessage}
-                    </span>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Grid Layout: Main Feed & Sidebar */}
-            <div className="grid lg:grid-cols-12 gap-8 items-start">
-              
-              {/* Articles Main Stream */}
-              <div className="lg:col-span-8 space-y-6">
-                
-                {/* Rating filter tools */}
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-zinc-200">
-                  <div className="flex items-center gap-2 text-zinc-500">
-                    <Filter className="h-4 w-4" />
-                    <span className="text-xs uppercase font-bold tracking-wider">Filters</span>
-                  </div>
-
-                  <div className="flex flex-wrap gap-1.5">
-                    {[
-                      { key: "ALL", label: "All Stories", color: "border-zinc-200 bg-zinc-100 hover:bg-zinc-200 text-zinc-700" },
-                      { key: "TRUE", label: "Verified True", color: "border-emerald-200 hover:bg-emerald-50 text-emerald-700" },
-                      { key: "FALSE", label: "False/Misleading", color: "border-rose-200 hover:bg-rose-50 text-rose-700" },
-                      { key: "MIXED", label: "Mixed", color: "border-amber-200 hover:bg-amber-50 text-amber-700" },
-                      { key: "UNVERIFIED", label: "Unverified", color: "border-zinc-200 hover:bg-zinc-100 text-zinc-600" },
-                    ].map((btn) => (
-                      <button
-                        key={btn.key}
-                        onClick={() => setSelectedRating(btn.key)}
-                        className={`text-xs font-semibold px-3 py-1.5 rounded-full border transition-all duration-200 cursor-pointer ${
-                          selectedRating === btn.key
-                            ? "bg-zinc-900 text-white border-zinc-900 shadow-sm"
-                            : btn.color
-                        }`}
-                      >
-                        {btn.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Grid container */}
-                {filteredArticles.length > 0 ? (
-                  <div className="grid md:grid-cols-2 gap-6">
-                    {filteredArticles.map((article) => (
-                      <NewsCard key={article.id} article={article} />
-                    ))}
-                  </div>
-                ) : (
-                  /* Empty state */
-                  <div className="text-center py-16 px-4 bg-white border border-zinc-200 rounded-2xl shadow-sm">
-                    <HelpCircle className="mx-auto h-12 w-12 text-zinc-300 mb-4" />
-                    <h3 className="text-lg font-bold text-zinc-900 font-serif">No articles available</h3>
-                    <p className="text-zinc-500 text-sm mt-1.5 max-w-sm mx-auto leading-relaxed">
-                      There are no stories mapped to this filter in SQLite. Click the "Refresh News" button at the top to fetch active Google News RSS headlines!
-                    </p>
-                    <button
-                      onClick={handleRefresh}
-                      disabled={isPending}
-                      className="mt-5 inline-flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-zinc-700 hover:text-zinc-900 underline hover:no-underline cursor-pointer"
-                    >
-                      <RefreshCw className={`h-3.5 w-3.5 ${isPending ? "animate-spin" : ""}`} />
-                      <span>Sync articles now</span>
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              {/* Sidebar */}
-              <div className="lg:col-span-4 space-y-6">
-                
-                {/* Section 1: Dashboard Stats */}
-                <div className="p-6 border border-zinc-200 bg-white rounded-2xl shadow-sm">
-                  <div className="flex items-center gap-2 text-zinc-800 border-b border-zinc-100 pb-3 mb-4">
-                    <Activity className="h-4.5 w-4.5 text-zinc-500" />
-                    <h4 className="font-serif font-bold text-sm uppercase tracking-wide">Platform Audit Stats</h4>
-                  </div>
-
-                  <div className="space-y-3.5">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="flex items-center gap-2 text-zinc-600">
-                        <FileText className="h-3.5 w-3.5 text-zinc-400" /> Total Audited Articles
-                      </span>
-                      <span className="font-bold bg-zinc-100 px-2 py-0.5 rounded-full border border-zinc-200 text-zinc-700">{stats.total}</span>
-                    </div>
-                    
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="flex items-center gap-2 text-emerald-700">
-                        <CheckCircle className="h-3.5 w-3.5 text-emerald-500" /> Verified True
-                      </span>
-                      <span className="font-bold bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full border border-emerald-200">{stats.trueCount}</span>
-                    </div>
-
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="flex items-center gap-2 text-rose-700">
-                        <XCircle className="h-3.5 w-3.5 text-rose-500" /> False/Misleading
-                      </span>
-                      <span className="font-bold bg-rose-50 text-rose-700 px-2 py-0.5 rounded-full border border-rose-200">{stats.falseCount}</span>
-                    </div>
-
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="flex items-center gap-2 text-amber-700">
-                        <AlertCircle className="h-3.5 w-3.5 text-amber-500" /> Mixed Truth
-                      </span>
-                      <span className="font-bold bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full border border-amber-200">{stats.mixedCount}</span>
-                    </div>
-
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="flex items-center gap-2 text-zinc-500">
-                        <HelpCircle className="h-3.5 w-3.5 text-zinc-400" /> Unverified Claims
-                      </span>
-                      <span className="font-bold bg-zinc-100 text-zinc-600 px-2 py-0.5 rounded-full border border-zinc-200">{stats.unverifiedCount}</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Section 2: Methodology */}
-                <div className="p-6 border border-zinc-200 bg-white rounded-2xl shadow-sm text-xs">
-                  <div className="flex items-center gap-2 text-zinc-800 border-b border-zinc-100 pb-3 mb-3">
-                    <BookOpen className="h-4.5 w-4.5 text-zinc-500" />
-                    <h4 className="font-serif font-bold text-sm uppercase tracking-wide">Methodology</h4>
-                  </div>
-                  <p className="leading-relaxed text-zinc-600 mb-3">
-                    TruthFeed tracks live news utilizing the Google News XML RSS feed. By clicking into details, the platform initiates a real-time factual audit powered by Gemini AI, generating key claim extractions and objective neutral summarizations.
-                  </p>
-                  <p className="font-semibold text-zinc-700 flex items-center gap-1.5">
-                    <Users className="h-3.5 w-3.5 text-zinc-500" /> Checked by trusted AI models
-                  </p>
-                  <p className="leading-relaxed text-zinc-500 mt-1">
-                    Verifiable claims are processed in strict objective analysis using neural models to dismantle biased framing.
-                  </p>
-                </div>
-
-                {/* Section 3: Database & API */}
-                <div className="p-6 border border-zinc-200 bg-white rounded-2xl shadow-sm text-xs">
-                  <div className="flex items-center gap-2 text-zinc-800 border-b border-zinc-100 pb-3 mb-3">
-                    <Database className="h-4.5 w-4.5 text-zinc-500" />
-                    <h4 className="font-serif font-bold text-sm uppercase tracking-wide">Database &amp; API</h4>
-                  </div>
-                  <p className="leading-relaxed text-zinc-600 mb-2">
-                    Every article and audit maps directly to our SQLite storage via Prisma ORM:
-                  </p>
-                  <code className="block p-2 bg-zinc-50 rounded-xl font-mono text-[9px] text-zinc-500 overflow-x-auto whitespace-pre border border-zinc-100">
-{`model Article {
-  id          String   @id
-  title       String
-  url         String   @unique
-  summary     String?
-  sourceName  String
-  publishedAt DateTime
-}`}
-                  </code>
-                </div>
-
-              </div>
-
-            </div>
+      {/* Main Core Content Feed */}
+      <main className="flex-1 mx-auto max-w-6xl w-full px-4 sm:px-6 py-6 space-y-8">
+        
+        {/* Sync message banners */}
+        {refreshMessage && (
+          <div className="bg-gray-100 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-gray-700 dark:text-slate-300 text-xs px-4 py-2 rounded-lg text-center font-medium animate-pulse">
+            {refreshMessage}
           </div>
         )}
+
+        {filteredArticles.length > 0 ? (
+          <div className="space-y-10">
+            
+            {/* "Top Stories" Hero Grid Layout (2 Columns) */}
+            {(activeCategory === "top" || activeCategory === "foryou") && heroStory && (
+              <section className="space-y-4">
+                <div className="flex items-center gap-2 border-b border-gray-100 dark:border-slate-800 pb-2">
+                  <h2 className="text-xl font-bold tracking-tight text-gray-900 dark:text-slate-100">Top Stories</h2>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                  
+                  {/* Left Column (66% width) - Massive Hero */}
+                  <div className="lg:col-span-8 flex flex-col justify-between border-b lg:border-b-0 lg:border-r border-gray-200 dark:border-slate-700 pb-6 lg:pb-0 lg:pr-8">
+                    <div className="space-y-4">
+                      <div className="aspect-video w-full rounded-lg overflow-hidden bg-gray-100 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 relative">
+                        <Link href={`/article/${heroStory.id}`} className="block w-full h-full">
+                          <NewsImage
+                            url={heroStory.url}
+                            title={heroStory.title}
+                            sourceName={heroStory.sourceName}
+                            className="w-full h-full object-cover hover:scale-101 transition-transform duration-300"
+                          />
+                        </Link>
+                      </div>
+                      <h3 className="text-2xl font-extrabold tracking-tight text-gray-950 dark:text-slate-100 leading-tight hover:text-gray-700 dark:hover:text-slate-300 transition-colors">
+                        <Link href={`/article/${heroStory.id}`}>{heroStory.title}</Link>
+                      </h3>
+                      <p className="text-sm text-gray-600 dark:text-slate-400 leading-relaxed line-clamp-3">
+                        {heroStory.summary}
+                      </p>
+                    </div>
+
+                    <div className="mt-4 pt-4 border-t border-gray-100 dark:border-slate-800 flex items-center justify-between text-xs text-gray-500 dark:text-slate-500 font-medium font-sans">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-bold text-gray-800 dark:text-slate-300">{heroStory.sourceName}</span>
+                        <span>•</span>
+                        <span>{formatTimeAgo(heroStory.publishedAt)}</span>
+                      </div>
+                      
+                      {heroStory.factChecks && heroStory.factChecks.length > 0 && (
+                        <span className="inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-50 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400 border border-emerald-250 dark:border-emerald-800">
+                          ✓ Verified
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Right Column (33% width) - related stack of 3 smaller textual articles */}
+                  <div className="lg:col-span-4 flex flex-col justify-between space-y-4">
+                    {relatedHeroStories.length > 0 ? (
+                      <div className="divide-y divide-gray-150 dark:divide-slate-800 space-y-4">
+                        {relatedHeroStories.map((story, idx) => (
+                          <div key={story.id} className={`${idx > 0 ? "pt-4" : ""} space-y-2`}>
+                            <h4 className="text-sm font-bold text-gray-900 dark:text-slate-200 hover:text-gray-700 dark:hover:text-slate-350 leading-snug line-clamp-3">
+                              <Link href={`/article/${story.id}`}>{story.title}</Link>
+                            </h4>
+                            <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-slate-500 font-medium font-sans">
+                              <span className="font-bold text-gray-700 dark:text-slate-400">{story.sourceName}</span>
+                              <span>•</span>
+                              <span>{formatTimeAgo(story.publishedAt)}</span>
+                              
+                              {story.factChecks && story.factChecks.length > 0 && (
+                                <span className="ml-auto inline-flex items-center text-[9px] font-bold px-1.5 py-0.2 rounded bg-emerald-50 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
+                                  ✓ Verified
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-gray-400 dark:text-slate-500 text-xs italic py-6 text-center">
+                        Awaiting feed updates
+                      </div>
+                    )}
+                  </div>
+
+                </div>
+              </section>
+            )}
+
+            {/* Standard Feed (Grid vs List Toggleable View Mode) */}
+            <section className="space-y-4">
+              {((activeCategory === "top" || activeCategory === "foryou") && heroStory) && (
+                <div className="border-b border-gray-150 dark:border-slate-800 pb-2 flex justify-between items-center">
+                  <h3 className="text-sm font-bold uppercase tracking-wider text-gray-500 dark:text-slate-400">More Stories</h3>
+                  <span className="text-[10px] text-gray-400 dark:text-slate-500 font-medium">Viewing as {viewMode === "grid" ? "Grid" : "List"}</span>
+                </div>
+              )}
+
+              {listFeedArticles.length > 0 ? (
+                <div className={viewMode === "grid" ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" : "flex flex-col gap-4 max-w-3xl mx-auto"}>
+                  {listFeedArticles.map((article) => (
+                    <NewsCard key={article.id} article={article} viewMode={viewMode} />
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-gray-405 dark:text-slate-550 italic py-6">No additional articles match your filter preferences.</p>
+              )}
+            </section>
+
+          </div>
+        ) : (
+          /* Empty State */
+          <div className="text-center py-16 px-4 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl max-w-md mx-auto transition-colors duration-300">
+            <h3 className="text-base font-bold text-gray-900 dark:text-slate-100">No articles available for this category</h3>
+            <p className="text-gray-500 dark:text-slate-400 text-sm mt-1.5 leading-relaxed">
+              No matching feeds could be indexed for "{CATEGORIES.find(c => c.id === activeCategory)?.label}". Hit the Sync trigger in the top right to download new RSS streams.
+            </p>
+          </div>
+        )}
+
       </main>
 
-      {/* Footer */}
-      <footer className="mt-20 border-t border-zinc-200 bg-white py-10">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 text-center">
-          {/* Footer Masthead */}
-          <div className="mb-1">
-            <span className="font-serif text-2xl font-bold tracking-tight text-zinc-900">
-              TruthFeed
-            </span>
-          </div>
-          <p className="font-sans text-sm font-normal tracking-wide text-zinc-400 mb-6">
-            Read the news. Know the truth.
+      {/* Floating Scroll to Top */}
+      <BackToTop />
+
+      {/* Clean Minimalist Aggregator Footer */}
+      <footer className="mt-20 border-t border-gray-200 dark:border-slate-800 bg-gray-50 dark:bg-slate-800/40 py-10 transition-colors duration-300">
+        <div className="mx-auto max-w-6xl px-4 sm:px-6 text-center space-y-2">
+          <span className="text-sm font-bold tracking-tight text-gray-900 dark:text-slate-205 block">
+            TruthFeed
+          </span>
+          <p className="text-xs text-gray-450 dark:text-slate-400 leading-normal max-w-md mx-auto">
+            Designed for fact-checking coverage comparisons and news transparency.
           </p>
-          <p className="text-xs text-zinc-400 mb-1">Designed for editorial integrity. All verified records are property of their respective fact-check organizations.</p>
-          <p className="text-xs text-zinc-400">&copy; {new Date().getFullYear()} TruthFeed Initiative. Powered by Next.js and Prisma.</p>
+          <p className="text-[10px] text-gray-400 dark:text-slate-500">
+            &copy; {new Date().getFullYear()} TruthFeed Initiative. All rights reserved.
+          </p>
         </div>
       </footer>
+
     </div>
   );
 }

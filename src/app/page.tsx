@@ -6,16 +6,19 @@ import HomepageClient from "@/components/HomepageClient";
 export const revalidate = 0;
 
 export default async function Home() {
-  // Query articles along with any associated fact checks and sources from SQLite
-  const articles = await prisma.article.findMany({
-    orderBy: {
-      publishedAt: "desc",
-    },
-    include: {
-      factChecks: true,
-      source: true,
-    },
-  });
+  // Query articles and sources in parallel from PostgreSQL
+  const [articles, sources] = await Promise.all([
+    prisma.article.findMany({
+      orderBy: {
+        publishedAt: "desc",
+      },
+      include: {
+        factChecks: true,
+        source: true,
+      },
+    }),
+    prisma.source.findMany(),
+  ]);
 
   const serializedArticles = articles.map((art) => ({
     ...art,
@@ -33,7 +36,20 @@ export default async function Home() {
     } : null,
   }));
 
+  const serializedSources = sources.map((s) => ({
+    id: s.id,
+    name: s.name,
+    bias: s.bias,
+    credibility: s.credibility,
+    description: s.description,
+  }));
+
   console.log("HOMEPAGE LOADED ARTICLES COUNT:", articles.length);
 
-  return <HomepageClient initialArticles={serializedArticles} />;
+  return (
+    <HomepageClient
+      initialArticles={serializedArticles}
+      initialSources={serializedSources}
+    />
+  );
 }

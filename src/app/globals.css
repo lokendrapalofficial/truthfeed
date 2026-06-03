@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* Configure manual class-based dark mode selector in Tailwind CSS v4 */
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
   --background: #fafafa;
   --foreground: #18181b;

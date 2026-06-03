@@ -4,6 +4,32 @@ import Parser from "rss-parser";
 import { prisma } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 
+function getCategoryImageUrl(title: string): string {
+  const t = title.toLowerCase();
+  if (t.match(/\b(court|senate|election|trump|biden|harris|law|government|president|policy|democrat|republican|tax|debt|tariff|white house|congress|politics)\b/)) {
+    return "https://images.unsplash.com/photo-1541872703-74c5e44368f9?auto=format&fit=crop&w=800&q=80"; // Politics
+  }
+  if (t.match(/\b(apple|google|microsoft|ai|meta|nvidia|intel|openai|semiconductor|chip|cybersecurity|software|tech|technology|phone|quantum|robot)\b/)) {
+    return "https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=800&q=80"; // Tech
+  }
+  if (t.match(/\b(space|mars|nasa|science|telescope|scientific|gene|dna|chemistry|physics|universe|planet|galaxy|scientist)\b/)) {
+    return "https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=800&q=80"; // Science
+  }
+  if (t.match(/\b(health|cancer|vaccine|virus|covid|fda|medical|disease|drug|outbreak|clinical|hospital|patient)\b/)) {
+    return "https://images.unsplash.com/photo-1505751172876-fa1923c5c528?auto=format&fit=crop&w=800&q=80"; // Health
+  }
+  if (t.match(/\b(sport|game|nba|nfl|cup|stadium|athlete|championship|tennis|soccer|olympics|race|match|win|losing)\b/)) {
+    return "https://images.unsplash.com/photo-1461896836934-ffe607ba8211?auto=format&fit=crop&w=800&q=80"; // Sports
+  }
+  if (t.match(/\b(market|finance|stock|stocks|wall st|economy|economic|business|ceo|company|billion|inflation|fed|rate|interest|bank)\b/)) {
+    return "https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?auto=format&fit=crop&w=800&q=80"; // Business
+  }
+  if (t.match(/\b(movie|film|hollywood|actor|actress|music|album|singer|pop|concert|tv|netflix|award|grammy|star)\b/)) {
+    return "https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?auto=format&fit=crop&w=800&q=80"; // Entertainment
+  }
+  return "https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=800&q=80"; // World / General fallback
+}
+
 export async function fetchNews() {
   try {
     const parser = new Parser();
@@ -23,7 +49,8 @@ export async function fetchNews() {
       // Extract details
       const title = item.title;
       const url = item.link;
-      const summary = item.contentSnippet || item.content || "";
+      const summary = item.contentSnippet || "";
+      const content = item.content || item.contentSnippet || "";
       const sourceName = item.source?.text || item.creator || "Google News";
       const publishedAt = item.pubDate ? new Date(item.pubDate) : new Date();
 
@@ -53,11 +80,17 @@ export async function fetchNews() {
         where: { name: parsedSourceName },
       });
 
+      // Extract image URL from RSS feed if available, else use a category-based visual helper
+      const feedImage = item.enclosure?.url || (item as any).media?.content?.[0]?.$.url || null;
+      const imageUrl = feedImage || getCategoryImageUrl(title);
+
       await prisma.article.upsert({
         where: { url },
         update: {
           title,
           summary,
+          content,
+          imageUrl,
           sourceName: parsedSourceName,
           publishedAt,
           sourceId: existingSource ? existingSource.id : null,
@@ -65,8 +98,9 @@ export async function fetchNews() {
         create: {
           title,
           url,
-          content: summary || title, // fallback for required content field
+          content,
           summary,
+          imageUrl,
           sourceName: parsedSourceName,
           publishedAt,
           sourceId: existingSource ? existingSource.id : null,
