@@ -226,6 +226,58 @@ async function fetchSourceUrlsMap(): Promise<Map<string, string>> {
   return sourceMap;
 }
 
+/**
+ * Fetch a page (article or publisher homepage) and extract og:image / twitter:image.
+ * Uses a 5-second timeout and reads only the first 20KB (og tags are always in <head>).
+ * Returns null on any failure — caller falls through to next pipeline step.
+ */
+async function fetchOgImage(pageUrl: string): Promise<string | null> {
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+    const res = await fetch(pageUrl, {
+      signal: controller.signal,
+      headers: {
+        "User-Agent": "Mozilla/5.0 (compatible; TruthFeed/1.0; +https://truthfeed-hazel.vercel.app)",
+        Accept: "text/html,application/xhtml+xml",
+      },
+    });
+
+    clearTimeout(timeoutId);
+    if (!res.ok) return null;
+
+    const reader = res.body?.getReader();
+    if (!reader) return null;
+
+    let html = "";
+    let totalBytes = 0;
+    const MAX_BYTES = 20 * 1024;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      html += new TextDecoder().decode(value);
+      totalBytes += value.byteLength;
+      if (totalBytes >= MAX_BYTES) { reader.cancel(); break; }
+    }
+
+    // Priority 1: og:image
+    const ogMatch = html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i)
+      || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i);
+    if (ogMatch?.[1] && !isAdOrSpacerImage(ogMatch[1])) return ogMatch[1];
+
+    // Priority 2: twitter:image
+    const twitterMatch = html.match(/<meta[^>]+name=["']twitter:image["'][^>]+content=["']([^"']+)["']/i)
+      || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+name=["']twitter:image["']/i);
+    if (twitterMatch?.[1] && !isAdOrSpacerImage(twitterMatch[1])) return twitterMatch[1];
+
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 export async function fetchNews() {
   try {
     // 1. Fetch XML source map directly
@@ -288,40 +340,82 @@ export async function fetchNews() {
         where: { name: parsedSourceName },
       });
 
-      // OVERHAULED 5-STEP PIPELINE:
+      // ─────────────────────────────────────────────────
+      // ENHANCED 6-STEP IMAGE PIPELINE
+      // ─────────────────────────────────────────────────
       let imageUrl: string | null = null;
       let isLogo = false;
+      let imageSource = "none";
 
-      // 1. Try to extract raw url from enclosure/media tags or content HTML
-      const rawUrl = extractRawImageUrl(rawItem);
-      
-      // 2. Sanitize, upgrade, and filter
-      if (rawUrl) {
-        imageUrl = sanitizeAndUpgradeImageUrl(rawUrl);
-      }
+      // Resolve source domain upfront (used in STEP 0 and STEP 3)
+      const sourceUrl = sourceMap.get(rawItem.link) || null;
+      const sourceDomain = extractDomain(sourceUrl);
 
-      // 3. Fallback to publisher logo (isLogo) using s2 favicon provider
-      if (!imageUrl) {
-        const sourceUrl = sourceMap.get(rawItem.link) || null;
-        const domain = extractDomain(sourceUrl);
-        if (domain) {
-          imageUrl = `https://www.google.com/s2/favicons?domain=${domain}&sz=128`;
-          isLogo = true;
+      // STEP 0a: Try to fetch og:image from the decoded real article URL (server-side)
+      // Note: Google News now uses protobuf-encoded URLs that cannot be decoded.
+      // The `url` variable will still point to news.google.com, so this only triggers
+      // when we successfully decoded the URL.
+      if (url && !url.includes("news.google.com")) {
+        const ogImage = await fetchOgImage(url);
+        if (ogImage) {
+          const sanitized = sanitizeAndUpgradeImageUrl(ogImage);
+          if (sanitized) {
+            imageUrl = sanitized;
+            isLogo = false;
+            imageSource = "article-og:image";
+          }
         }
       }
 
-      // 4. Fallback to deterministic curated category template
+      // STEP 0b: Try to fetch og:image from the publisher's HOMEPAGE.
+      // This gives us a clean, representative branded image when the article URL
+      // is not decodable (which is currently the case for all Google News RSS items).
+      if (!imageUrl && sourceDomain) {
+        const homepageUrl = `https://${sourceDomain}`;
+        const ogImage = await fetchOgImage(homepageUrl);
+        if (ogImage) {
+          const sanitized = sanitizeAndUpgradeImageUrl(ogImage);
+          if (sanitized) {
+            imageUrl = sanitized;
+            isLogo = false;
+            imageSource = "homepage-og:image";
+          }
+        }
+      }
+
+      // STEP 1+2: Try RSS multi-tag + HTML description regex extraction
+      if (!imageUrl) {
+        const rawUrl = extractRawImageUrl(rawItem);
+        if (rawUrl) {
+          const sanitized = sanitizeAndUpgradeImageUrl(rawUrl);
+          if (sanitized) {
+            imageUrl = sanitized;
+            isLogo = false;
+            imageSource = "rss-tag";
+          }
+        }
+      }
+
+      // STEP 3: Fallback to publisher logo (isLogo) using Google favicon service
+      if (!imageUrl && sourceDomain) {
+        imageUrl = `https://www.google.com/s2/favicons?domain=${sourceDomain}&sz=128`;
+        isLogo = true;
+        imageSource = "publisher-logo";
+      }
+
+      // STEP 4: Fallback to deterministic curated category template
       if (!imageUrl) {
         imageUrl = getDeterministicImage(title);
         isLogo = false;
+        imageSource = "unsplash-template";
       }
 
       // Print extracted parameters to console for verification
       console.log(`[INGESTION PIPELINE]`);
-      console.log(`  Title:  "${title}"`);
+      console.log(`  Title:  "${title.substring(0, 60)}"`);
       console.log(`  Source: "${parsedSourceName}"`);
-      console.log(`  Image:  "${imageUrl}"`);
-      console.log(`  isLogo: ${isLogo}`);
+      console.log(`  Image:  "${imageUrl?.substring(0, 80)}"`);
+      console.log(`  isLogo: ${isLogo} | via: ${imageSource}`);
 
       await prisma.article.upsert({
         where: { url },
