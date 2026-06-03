@@ -6,7 +6,7 @@ import { ArrowLeft, Calendar, Globe, Shield, Sparkles, Activity, MessageSquare, 
 import ShareWidget from "@/components/ShareWidget";
 import SourceBadge from "@/components/SourceBadge";
 import CommunityNotesSection, { NoteItem } from "@/components/CommunityNotesSection";
-import PublisherVisual from "@/components/PublisherVisual";
+import NewsImage from "@/components/NewsImage";
 import { analyzeArticle } from "@/app/actions/analyzeArticle";
 import { getPerspectives, PerspectivesResult } from "@/app/actions/getPerspectives";
 import { fetchFactChecks, MappedFactCheck } from "@/app/actions/fetchFactChecks";
@@ -257,9 +257,16 @@ export default function ArticleClient({ article, serializedNotes }: ArticleClien
           {cleanTitle}
         </h1>
 
-        {/* Cover Thumbnail Image Fallback */}
+        {/* Cover Thumbnail Image if Available */}
         <div className="aspect-video w-full rounded-xl overflow-hidden bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 shadow-sm relative">
-          <PublisherVisual sourceName={article.sourceName} viewMode="detail" />
+          <NewsImage
+            url={article.url}
+            title={cleanTitle}
+            sourceName={article.sourceName}
+            imageUrl={article.imageUrl}
+            isLogo={article.isLogo}
+            className="w-full h-full object-cover"
+          />
         </div>
 
         {/* TASK 4: AI Briefing Box (bg-blue-50 with sparkle icon) at the top of coverage */}
