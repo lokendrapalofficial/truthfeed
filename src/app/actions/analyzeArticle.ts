@@ -4,9 +4,8 @@ import { prisma } from "@/lib/db";
 import { genAI, geminiModel } from "@/lib/gemini";
 
 export interface GeminiAnalysisResult {
+  brief: string;
   claims: string[];
-  neutralSummary: string;
-  searchQueries: string[];
 }
 
 export async function analyzeArticle(articleId: string) {
@@ -24,21 +23,16 @@ export async function analyzeArticle(articleId: string) {
     // Graceful fallback for mock mode if GEMINI_API_KEY is not defined
     if (!apiKey || apiKey === "MOCK_KEY" || apiKey.trim() === "") {
       console.warn("Using mock Gemini analysis because GEMINI_API_KEY is not defined.");
-      
-      // Simulate processing latency
-      await new Promise((resolve) => setTimeout(resolve, 1500));
+
+      await new Promise((resolve) => setTimeout(resolve, 1200));
 
       const mockResult: GeminiAnalysisResult = {
+        brief: `${article.sourceName} reports on "${article.title.substring(0, 60)}...". The story covers developments of significance to readers following this topic.`,
         claims: [
-          `Claim 1: The news article originates from ${article.sourceName || "the specified publisher"}.`,
-          `Claim 2: Headline details: "${article.title.substring(0, 40)}..."`,
-          `Claim 3: The report was published/updated on ${new Date(article.publishedAt).toLocaleDateString()}.`
+          `The article originates from ${article.sourceName || "the specified publisher"}.`,
+          `Published on ${new Date(article.publishedAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}.`,
+          `Headline summary: "${article.title.substring(0, 55)}..."`,
         ],
-        neutralSummary: `[DEMO - MOCK AI MODE] This is a neutral restatement of the article published by ${article.sourceName}. The article reports on the subject: "${article.title}". There is no emotionally charged language detected in the parsed description.`,
-        searchQueries: [
-          `${article.sourceName} ${article.title.split(" ").slice(0, 3).join(" ")} source verification`,
-          `recent reports on ${article.title.split(" ").slice(0, 4).join(" ")}`
-        ]
       };
 
       return { success: true, analysis: mockResult, isMock: true };
@@ -52,16 +46,16 @@ export async function analyzeArticle(articleId: string) {
       },
     });
 
-    const prompt = `You are an objective, neutral fact-checking assistant. Analyze the following news headline and summary.
-1) Extract up to 3 verifiable factual claims made in the text.
-2) Rewrite the summary in a strictly neutral tone, removing any emotionally charged or biased language.
-3) Provide 2 search queries the user can use to verify these claims.
+    const prompt = `You are a concise, objective fact-checking assistant. Analyze the following news headline and summary.
 
-Format the output strictly as JSON matching the following structure:
+Your task:
+1) Write a BRIEF: a maximum of TWO sentences that neutrally summarize what happened. No editorializing, no bias.
+2) Extract KEY CLAIMS: up to THREE specific, verifiable factual claims made in the article. Each claim should be a single, short sentence.
+
+Return ONLY valid JSON in this exact structure:
 {
-  "claims": ["Claim 1", "Claim 2", "Claim 3"],
-  "neutralSummary": "Neutral summary text...",
-  "searchQueries": ["Query 1", "Query 2"]
+  "brief": "Two sentence maximum neutral summary.",
+  "claims": ["Specific verifiable claim 1.", "Specific verifiable claim 2.", "Specific verifiable claim 3."]
 }
 
 ---
@@ -81,7 +75,7 @@ Summary: "${article.summary || article.content}"`;
   } catch (error: any) {
     console.error("Error analyzing article with Gemini:", error);
 
-    // Attempt resilient offline fallback to prevent runtime downtime
+    // Resilient offline fallback
     try {
       const article = await prisma.article.findUnique({
         where: { id: articleId },
@@ -89,18 +83,14 @@ Summary: "${article.summary || article.content}"`;
 
       if (article) {
         console.warn("Resilience Trigger: Switched to offline mock fallback due to Gemini API limits.");
-        
+
         const mockResult: GeminiAnalysisResult = {
+          brief: `${article.sourceName} has published a report on "${article.title.substring(0, 60)}...". The Gemini AI briefing service is temporarily unavailable — please check back shortly.`,
           claims: [
-            `Claim 1: The news article originates from ${article.sourceName || "the specified publisher"}.`,
-            `Claim 2: Headline details: "${article.title.substring(0, 40)}..."`,
-            `Claim 3: The report was published/updated on ${new Date(article.publishedAt).toLocaleDateString()}.`
+            `The article originates from ${article.sourceName || "the specified publisher"}.`,
+            `Published on ${new Date(article.publishedAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}.`,
+            `Headline: "${article.title.substring(0, 55)}..."`,
           ],
-          neutralSummary: `[RESILIENT FALLBACK - API RATE LIMIT] (Note: The active Gemini API key exceeded its free-tier rate limits, so we loaded this offline fallback). The article reports: "${article.title}". This reporting utilizes neutral coverage of the subject.`,
-          searchQueries: [
-            `${article.sourceName} ${article.title.split(" ").slice(0, 3).join(" ")} source verification`,
-            `recent reports on ${article.title.split(" ").slice(0, 4).join(" ")}`
-          ]
         };
 
         return { success: true, analysis: mockResult, isMock: true, rateLimitHit: true };
