@@ -75,7 +75,12 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [isPending, startTransition] = useTransition();
   const [refreshMessage, setRefreshMessage] = useState<string | null>(null);
-  const [visibleCount, setVisibleCount] = useState(9);
+  const [page, setPage] = useState(1);
+  const [articles, setArticles] = useState<any[]>([]);
+  const [hasMore, setHasMore] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
+  const activeCategoryMounted = useRef(false);
+  const searchQueryMounted = useRef(false);
   const loaderRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -105,7 +110,7 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
     });
   };
 
-  const articles = useMemo(() => {
+  const allArticles = useMemo(() => {
     return initialArticles.map((art) => ({
       id: art.id,
       title: art.title,
@@ -124,7 +129,7 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
   }, [initialArticles]);
 
   const filteredArticles = useMemo(() => {
-    let result = articles.filter((article) => {
+    let result = allArticles.filter((article) => {
       // 1. Search Query Match
       const matchesSearch =
         article.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -162,13 +167,13 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
     }
 
     return result;
-  }, [articles, searchQuery, activeCategory]);
+  }, [allArticles, searchQuery, activeCategory]);
 
   const trendingVerified = useMemo(() => {
-    return articles
+    return allArticles
       .filter((art) => isVerified(art))
       .slice(0, 5);
-  }, [articles]);
+  }, [allArticles]);
 
   const heroArticle = useMemo(() => {
     return filteredArticles[0] || null;
@@ -184,18 +189,118 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
 
   const heroColSpan = stackArticles.length > 0 ? "lg:col-span-8" : "lg:col-span-12";
 
-  useEffect(() => {
-    setVisibleCount(9);
-  }, [activeCategory, searchQuery]);
+  // Helper function to query the local database articles array by page
+  const getFilteredArticlesForCategory = (category: string, query: string) => {
+    let result = allArticles.filter((article) => {
+      // 1. Search Query Match
+      const matchesSearch =
+        article.title.toLowerCase().includes(query.toLowerCase()) ||
+        article.summary.toLowerCase().includes(query.toLowerCase()) ||
+        article.sourceName.toLowerCase().includes(query.toLowerCase());
+      if (!matchesSearch) return false;
 
+      // 2. Category Match
+      if (category === "verified") {
+        const isTrue = article.factChecks?.some((fc: any) => fc.rating === "TRUE");
+        const isHighCred = article.source?.credibility === "VERY_HIGH" || article.source?.credibility === "HIGH";
+        const isHighConf = article.analysis?.verification?.confidenceLevel === "High" || article.analysis?.verification?.confidenceLevel === "HIGH";
+        if (!isTrue && !isHighCred && !isHighConf) return false;
+      } else if (category !== "top" && category !== "foryou") {
+        const cat = getArticleCategory(article.title, article.summary);
+        if (cat !== category) return false;
+      }
+
+      return true;
+    });
+
+    if (category === "foryou") {
+      result = [...result].sort((a, b) => {
+        const aVerified = isVerified(a) ? 1 : 0;
+        const bVerified = isVerified(b) ? 1 : 0;
+        if (aVerified !== bVerified) return bVerified - aVerified;
+
+        const aScore = getConsensusScore(a) || 0;
+        const bScore = getConsensusScore(b) || 0;
+        if (aScore !== bScore) return bScore - aScore;
+
+        return new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime();
+      });
+    }
+
+    return result;
+  };
+
+  const fetchArticles = (category: string, pageNum: number, currentSearchQuery: string = searchQuery) => {
+    setIsLoading(true);
+    const filtered = getFilteredArticlesForCategory(category, currentSearchQuery);
+    
+    // The main feed starts after the hero and stack articles (index 5 onwards)
+    const feedOnly = filtered.slice(5);
+    
+    const itemsPerPage = 6;
+    const initialItems = 9;
+    
+    let nextBatch: any[] = [];
+    let newHasMore = false;
+    
+    if (pageNum === 1) {
+      nextBatch = feedOnly.slice(0, initialItems);
+      newHasMore = initialItems < feedOnly.length;
+      setArticles(nextBatch);
+    } else {
+      const startIndex = initialItems + (pageNum - 2) * itemsPerPage;
+      nextBatch = feedOnly.slice(startIndex, startIndex + itemsPerPage);
+      newHasMore = (startIndex + itemsPerPage) < feedOnly.length;
+      setArticles((prev) => [...prev, ...nextBatch]);
+    }
+    
+    setHasMore(newHasMore);
+    setIsLoading(false);
+  };
+
+  // Watch activeCategory changes to reset and immediately trigger first fetch
+  useEffect(() => {
+    if (!activeCategoryMounted.current) {
+      activeCategoryMounted.current = true;
+      setIsLoading(true);
+      fetchArticles(activeCategory, 1, searchQuery);
+      return;
+    }
+    setPage(1);
+    setArticles([]);
+    setHasMore(true);
+    setIsLoading(true);
+    fetchArticles(activeCategory, 1, searchQuery);
+  }, [activeCategory]);
+
+  // Watch searchQuery changes to reset and refetch
+  useEffect(() => {
+    if (!searchQueryMounted.current) {
+      searchQueryMounted.current = true;
+      return;
+    }
+    setPage(1);
+    setArticles([]);
+    setHasMore(true);
+    setIsLoading(true);
+    fetchArticles(activeCategory, 1, searchQuery);
+  }, [searchQuery]);
+
+  // IntersectionObserver effect for scroll trigger
   useEffect(() => {
     const currentLoader = loaderRef.current;
-    if (!currentLoader) return;
+    if (!currentLoader || !hasMore || isLoading) return;
 
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0].isIntersecting) {
-          setVisibleCount((prev) => prev + 6);
+          setPage((prev) => {
+            const nextPage = prev + 1;
+            setTimeout(() => {
+              fetchArticles(activeCategory, nextPage, searchQuery);
+            }, 0);
+            return nextPage;
+          });
         }
       },
       { threshold: 0.1 }
@@ -206,7 +311,7 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
     return () => {
       observer.unobserve(currentLoader);
     };
-  }, [feedArticles]);
+  }, [activeCategory, searchQuery, hasMore, isLoading, articles]);
 
   return (
     <div className="flex flex-col min-h-screen bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 font-sans antialiased transition-colors duration-300">
@@ -512,16 +617,25 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
                     </h2>
                   </div>
 
-                  {feedArticles.length > 0 ? (
+                   {isLoading && articles.length === 0 ? (
+                    <div className="flex justify-center py-12">
+                      <div className="flex gap-1.5 items-center text-slate-400 dark:text-slate-500 font-mono text-xs">
+                        <span className="w-1.5 h-1.5 rounded-full bg-slate-400 dark:bg-slate-500 animate-bounce [animation-delay:-0.3s]" />
+                        <span className="w-1.5 h-1.5 rounded-full bg-slate-400 dark:bg-slate-500 animate-bounce [animation-delay:-0.15s]" />
+                        <span className="w-1.5 h-1.5 rounded-full bg-slate-400 dark:bg-slate-500 animate-bounce" />
+                        <span className="ml-1.5">Loading more stories...</span>
+                      </div>
+                    </div>
+                  ) : articles.length > 0 ? (
                     <>
                       <div className={viewMode === "grid" ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" : "flex flex-col gap-4 max-w-3xl"}>
-                        {feedArticles.slice(0, visibleCount).map((article) => (
+                        {articles.map((article) => (
                           <NewsCard key={article.id} article={article} viewMode={viewMode} />
                         ))}
                       </div>
-
+ 
                       {/* Infinite Scroll Trigger */}
-                      {visibleCount < feedArticles.length && (
+                      {hasMore && (
                         <div ref={loaderRef} className="flex justify-center py-8">
                           <div className="flex gap-1.5 items-center text-slate-400 dark:text-slate-500 font-mono text-xs">
                             <span className="w-1.5 h-1.5 rounded-full bg-slate-400 dark:bg-slate-500 animate-bounce [animation-delay:-0.3s]" />
