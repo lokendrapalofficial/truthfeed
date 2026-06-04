@@ -26,7 +26,7 @@ export default function NetflixCard({ article }: NetflixCardProps) {
       if (factCheck.rating === "FALSE" || factCheck.rating === "MIXED") {
         return (
           <span className="bg-rose-500/90 backdrop-blur-xs text-white text-[10px] font-extrabold px-2.5 py-1 rounded-full border border-rose-400/30 tracking-wider">
-            ⚠️ CONFLICT
+            ⚠️ CONFLICTING
           </span>
         );
       }
@@ -43,16 +43,12 @@ export default function NetflixCard({ article }: NetflixCardProps) {
     if (credibility === "LOW" || credibility === "VERY_LOW") {
       return (
         <span className="bg-rose-500/90 backdrop-blur-xs text-white text-[10px] font-extrabold px-2.5 py-1 rounded-full border border-rose-400/30 tracking-wider">
-          ⚠️ CONFLICT
+          ⚠️ CONFLICTING
         </span>
       );
     }
 
-    return (
-      <span className="bg-stone-500/80 backdrop-blur-xs text-white text-[10px] font-extrabold px-2.5 py-1 rounded-full border border-stone-400/20 tracking-wider">
-        ◯ PENDING
-      </span>
-    );
+    return null;
   };
 
   // Resolve quick brief or neutral summaries

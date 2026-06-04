@@ -2,9 +2,9 @@
 
 import React from "react";
 import Link from "next/link";
-import { Sparkles } from "lucide-react";
 import { motion } from "framer-motion";
 import NewsImage from "@/components/NewsImage";
+import { formatSmartDate, getArticleCategory } from "@/lib/utils";
 
 export type RatingType = "TRUE" | "FALSE" | "MIXED" | "UNVERIFIED";
 
@@ -36,6 +36,21 @@ export interface ArticleMock {
     credibility: string;
     description?: string | null;
   } | null;
+  analysis?: {
+    id?: string;
+    claim?: string;
+    briefing?: string | null;
+    wikiContexts?: any;
+    category?: string | null;
+    articleText?: string | null;
+    verification?: {
+      coreClaim?: string;
+      consensusScore?: number;
+      confidenceLevel?: string;
+      conflictReport?: string;
+      reasoning?: string;
+    } | null;
+  } | null;
 }
 
 interface NewsCardProps {
@@ -63,46 +78,72 @@ export default function NewsCard({ article, viewMode = "grid" }: NewsCardProps) 
     }
   };
 
-  // Fact check audit pill mapping with Twitter-style dark mode overrides
+  // Fact check audit pill mapping
   const renderAuditBadge = () => {
-    if (!factCheck) {
+    const credibility = article.source?.credibility;
+
+    if (factCheck) {
+      if (factCheck.rating === "TRUE") {
+        return (
+          <span className="ml-auto text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 border border-emerald-250 dark:border-emerald-800">
+            🟢 VERIFIED
+          </span>
+        );
+      }
+      if (factCheck.rating === "FALSE" || factCheck.rating === "MIXED") {
+        return (
+          <span className="ml-auto text-[10px] font-semibold px-2 py-0.5 rounded-full bg-rose-50 dark:bg-rose-950/30 text-rose-750 dark:text-rose-450 border border-rose-250 dark:border-rose-800">
+            ⚠️ CONFLICTING
+          </span>
+        );
+      }
+    }
+
+    if (credibility === "VERY_HIGH" || credibility === "HIGH") {
       return (
-        <span className="ml-auto text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
-          AUDIT PENDING
+        <span className="ml-auto text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 border border-emerald-250 dark:border-emerald-800">
+          🟢 VERIFIED
+        </span>
+      );
+    }
+    if (credibility === "LOW" || credibility === "VERY_LOW") {
+      return (
+        <span className="ml-auto text-[10px] font-semibold px-2 py-0.5 rounded-full bg-rose-50 dark:bg-rose-950/30 text-rose-750 dark:text-rose-450 border border-rose-250 dark:border-rose-800">
+          ⚠️ CONFLICTING
         </span>
       );
     }
 
-    switch (factCheck.rating) {
-      case "TRUE":
-        return (
-          <span className="ml-auto text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400 border border-emerald-250 dark:border-emerald-800">
-            VERIFIED TRUE
-          </span>
-        );
-      case "FALSE":
-        return (
-          <span className="ml-auto text-[10px] font-semibold px-2 py-0.5 rounded-full bg-rose-50 dark:bg-rose-900/40 text-rose-750 dark:text-rose-450 border border-rose-250 dark:border-rose-800">
-            FALSE / MISLEADING
-          </span>
-        );
-      case "MIXED":
-        return (
-          <span className="ml-auto text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 border border-amber-250 dark:border-amber-800">
-            MIXED TRUTH
-          </span>
-        );
-      default:
-        return (
-          <span className="ml-auto text-[10px] font-semibold px-2 py-0.5 rounded-full bg-stone-50 dark:bg-slate-800 text-stone-707 dark:text-slate-400 border border-stone-250 dark:border-slate-700">
-            UNVERIFIED
-          </span>
-        );
-    }
+    return null;
   };
 
   const dotColorClass = getCredibilityDotColor(article.source?.credibility);
   const credibilityLabel = article.source?.credibility ? `Credibility: ${article.source.credibility.replace("_", " ")}` : "Credibility: UNRATED";
+
+  const smartDate = formatSmartDate(article.publishedAt);
+
+  const getConsensusScore = () => {
+    if (article.analysis?.verification?.consensusScore !== undefined) {
+      return article.analysis.verification.consensusScore;
+    }
+    const factChecks = article.factChecks || [];
+    if (factChecks.some((fc: any) => fc.rating === "TRUE")) return 5;
+    if (article.source?.credibility === "VERY_HIGH") return 5;
+    if (article.source?.credibility === "HIGH") return 4;
+    return null;
+  };
+
+  const score = getConsensusScore();
+  const isVerified = article.factChecks?.some((fc: any) => fc.rating === "TRUE") ||
+                     article.source?.credibility === "VERY_HIGH" ||
+                     article.source?.credibility === "HIGH" ||
+                     article.analysis?.verification?.confidenceLevel === "High";
+
+  const consensusBadge = isVerified && score ? (
+    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 select-none">
+      🟢 {score}/5 Desks
+    </span>
+  ) : null;
 
   // List View Layout (Horizontal Flex)
   if (viewMode === "list") {
@@ -128,9 +169,8 @@ export default function NewsCard({ article, viewMode = "grid" }: NewsCardProps) 
         <div className="flex-1 flex flex-col justify-between py-0.5 min-w-0">
           <div className="space-y-1.5">
             <div className="flex items-center gap-2 text-xs">
-              <span className="font-semibold text-stone-700 dark:text-slate-400 truncate max-w-[120px]">{article.sourceName}</span>
               <span
-                className={`w-2 h-2 rounded-full shrink-0 ${dotColorClass}`}
+                className={`w-2.5 h-2.5 rounded-full shrink-0 ${dotColorClass}`}
                 title={credibilityLabel}
               />
               {renderAuditBadge()}
@@ -145,15 +185,18 @@ export default function NewsCard({ article, viewMode = "grid" }: NewsCardProps) 
             </p>
           </div>
 
-          <div className="flex items-center justify-between text-[11px] text-stone-500 dark:text-slate-500 pt-1 font-sans">
-            <time>{new Date(article.publishedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</time>
-            <Link
-              href={`/article/${article.id}`}
-              className="flex items-center gap-1 text-stone-500 dark:text-slate-400 hover:text-stone-700 dark:hover:text-slate-300 transition-colors cursor-pointer font-medium"
-            >
-              <Sparkles className="h-3 w-3 text-amber-500" />
-              <span>AI Context</span>
-            </Link>
+          <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 pt-2 font-mono border-t border-stone-50 dark:border-slate-750/50 mt-1">
+            <div className="flex items-center gap-1.5">
+              <span className="font-semibold text-slate-700 dark:text-slate-300">{article.sourceName}</span>
+              <span className="text-slate-300 dark:text-slate-700">•</span>
+              <div className="flex items-center gap-1">
+                {smartDate.showRedDot && (
+                  <span className="animate-pulse bg-red-500 rounded-full h-1.5 w-1.5 inline-block shrink-0" />
+                )}
+                <span>{smartDate.text}</span>
+              </div>
+            </div>
+            {consensusBadge}
           </div>
         </div>
       </motion.article>
@@ -161,14 +204,16 @@ export default function NewsCard({ article, viewMode = "grid" }: NewsCardProps) 
   }
 
   // Grid View Layout (Vertical Card - Current Layout)
+  const category = (article.analysis?.category || getArticleCategory(article.title, article.summary || article.content || "")).toUpperCase();
+
   return (
     <motion.article
       whileHover={{ y: -4, boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.05)" }}
       transition={{ duration: 0.2, ease: "easeOut" }}
-      className="bg-white dark:bg-slate-800 rounded-xl shadow-sm overflow-hidden border border-stone-150 dark:border-slate-700 flex flex-col justify-between transition-colors duration-300"
+      className="bg-white dark:bg-slate-900 rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between transition-colors duration-300"
     >
       <div>
-        <div className="aspect-video w-full overflow-hidden bg-stone-50 dark:bg-slate-900 relative">
+        <div className="aspect-video w-full overflow-hidden bg-stone-50 dark:bg-slate-950 relative">
           <Link href={`/article/${article.id}`} className="block w-full h-full">
             <NewsImage
               url={article.url}
@@ -181,35 +226,33 @@ export default function NewsCard({ article, viewMode = "grid" }: NewsCardProps) 
             />
           </Link>
         </div>
-        <div className="p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <span className="text-xs font-semibold text-stone-700 dark:text-gray-400">{article.sourceName}</span>
-            <span
-              className={`w-2 h-2 rounded-full ${dotColorClass}`}
-              title={credibilityLabel}
-            />
-            {renderAuditBadge()}
-          </div>
-          <h3 className="font-bold text-lg text-stone-900 dark:text-slate-100 mb-2 line-clamp-2 hover:text-stone-700 dark:hover:text-slate-300 transition-colors">
+        <div className="p-4 flex-1 flex flex-col">
+          <span className="text-[10px] font-mono tracking-wider text-slate-500 uppercase mb-1">
+            {category}
+          </span>
+          <h3 className="font-sans font-bold text-xl text-stone-900 dark:text-slate-100 mb-2 line-clamp-2 hover:text-stone-700 dark:hover:text-slate-350 transition-colors leading-snug">
             <Link href={`/article/${article.id}`}>
               {article.title}
             </Link>
           </h3>
-          <p className="text-sm text-stone-600 dark:text-slate-450 line-clamp-2 mb-3">
+          <p className="text-sm text-slate-500 dark:text-slate-400 line-clamp-1 mb-3">
             {article.summary || article.content}
           </p>
         </div>
       </div>
 
-      <div className="px-4 pb-4 pt-1 flex items-center justify-between text-xs text-stone-500 dark:text-slate-500 border-t border-stone-50 dark:border-slate-750">
-        <time>{new Date(article.publishedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</time>
-        <Link
-          href={`/article/${article.id}`}
-          className="flex items-center gap-1 text-stone-500 dark:text-slate-400 hover:text-stone-700 dark:hover:text-slate-300 transition-colors cursor-pointer font-medium"
-        >
-          <Sparkles className="h-3 w-3 text-amber-500" />
-          <span>AI Context</span>
-        </Link>
+      <div className="px-4 pb-4 pt-2.5 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 border-t border-slate-150 dark:border-slate-800/80 font-mono">
+        <div className="flex items-center gap-1.5">
+          <span className="font-semibold text-slate-700 dark:text-slate-350">{article.sourceName}</span>
+          <span className="text-slate-300 dark:text-slate-700">•</span>
+          <div className="flex items-center gap-1">
+            {smartDate.showRedDot && (
+              <span className="animate-pulse bg-red-500 rounded-full h-1.5 w-1.5 inline-block shrink-0" />
+            )}
+            <span>{smartDate.text}</span>
+          </div>
+        </div>
+        {consensusBadge}
       </div>
     </motion.article>
   );

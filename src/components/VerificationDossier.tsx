@@ -36,6 +36,63 @@ export default function VerificationDossier({
         .filter(Boolean)
     : [];
 
+  // Helper to render paragraph with custom bold prefixes and monospace consensus badge
+  const renderParagraph = (para: string, idx: number) => {
+    let prefix: React.ReactNode = null;
+    let restText = para;
+
+    const alertRegex = /^(🚨\s*ALERT:?)/i;
+    const verifiedRegex = /^(✅\s*VERIFIED:?)/i;
+
+    if (alertRegex.test(restText)) {
+      const match = restText.match(alertRegex);
+      if (match) {
+        prefix = (
+          <span className="font-sans font-extrabold text-red-600 dark:text-red-400 mr-2 inline-flex items-center gap-1.5 text-xl tracking-wider select-none">
+            <span className="animate-pulse inline-block">🚨</span> ALERT:
+          </span>
+        );
+        restText = restText.slice(match[0].length).trim();
+      }
+    } else if (verifiedRegex.test(restText)) {
+      const match = restText.match(verifiedRegex);
+      if (match) {
+        prefix = (
+          <span className="font-sans font-extrabold text-emerald-600 dark:text-emerald-400 mr-2 inline-flex items-center gap-1.5 text-xl tracking-wider select-none">
+            <span>✅</span> VERIFIED:
+          </span>
+        );
+        restText = restText.slice(match[0].length).trim();
+      }
+    }
+
+    // Split restText by consensus score pattern: e.g. "Consensus: 5/5 desks" or "Consensus: 2/5 - conflicting reports"
+    const consensusRegex = /(Consensus:\s*\d+\/\d+(?:\s*-\s*[^.]+|\s+\w+)*)/i;
+    const parts = restText.split(consensusRegex);
+
+    return (
+      <p
+        key={idx}
+        className="font-serif text-lg leading-relaxed text-slate-800 dark:text-slate-200"
+      >
+        {prefix}
+        {parts.map((part, pIdx) => {
+          if (consensusRegex.test(part)) {
+            return (
+              <span
+                key={pIdx}
+                className="font-mono text-sm bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-100 px-2.5 py-1 rounded border border-slate-200 dark:border-slate-700/60 mx-1 select-all inline-block align-middle font-semibold"
+              >
+                {part}
+              </span>
+            );
+          }
+          return part;
+        })}
+      </p>
+    );
+  };
+
   return (
     <div className="max-w-2xl mx-auto px-4 py-8 bg-white dark:bg-slate-900 transition-colors duration-300 space-y-6">
       {/* Verification Scorecard sitting at the top */}
@@ -70,14 +127,7 @@ export default function VerificationDossier({
       {/* synthesized prose paragraphs */}
       {paragraphs.length > 0 ? (
         <div className="space-y-6 pt-2">
-          {paragraphs.map((para, idx) => (
-            <p
-              key={idx}
-              className="font-serif text-lg leading-relaxed text-slate-800 dark:text-slate-200"
-            >
-              {para}
-            </p>
-          ))}
+          {paragraphs.map((para, idx) => renderParagraph(para, idx))}
         </div>
       ) : (
         /* Pulser Skeleton matching 3 paragraphs of text (fallback/safeguard) */

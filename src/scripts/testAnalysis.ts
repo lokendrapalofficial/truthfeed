@@ -3,8 +3,8 @@ import { analyzeArticle } from "../app/actions/analyzeArticle";
 async function testAnalysis() {
   console.log("Triggering Gemini AI Fact-Check Audit for Article...");
   
-  // Use the CNBC article ID we verified exists in SQLite
-  const articleId = "cmpwo0r8k000hyagckncx4uaa";
+  // Use a valid article ID we verified exists in the database
+  const articleId = "cmpz9gn6n0005yam44dkgci23";
 
   try {
     const result = await analyzeArticle(articleId);
