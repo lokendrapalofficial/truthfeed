@@ -92,6 +92,7 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
       summary: art.summary || art.content || "",
       imageUrl: art.imageUrl,
       isLogo: art.isLogo,
+      isThematic: art.isThematic,
       sourceName: art.sourceName,
       publishedAt: art.publishedAt,
       factChecks: art.factChecks || [],
@@ -317,6 +318,7 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
                             sourceName={heroStory.sourceName}
                             imageUrl={heroStory.imageUrl}
                             isLogo={heroStory.isLogo}
+                            isThematic={heroStory.isThematic}
                             className="w-full h-full object-cover hover:scale-101 transition-transform duration-300"
                           />
                         </Link>

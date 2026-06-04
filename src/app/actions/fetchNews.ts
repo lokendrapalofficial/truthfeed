@@ -4,46 +4,47 @@ import Parser from "rss-parser";
 import { prisma } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 
-// Category templates for Unsplash fallback illustrations
+// Category templates for Unsplash fallback illustrations (high-res 1200px editorial)
 const CATEGORY_TEMPLATES: Record<string, string[]> = {
   politics: [
-    "https://images.unsplash.com/photo-1541872703-74c5e44368f9?auto=format&fit=crop&w=800&q=80",
-    "https://images.unsplash.com/photo-1529107386315-e1a2ed48a620?auto=format&fit=crop&w=800&q=80",
-    "https://images.unsplash.com/photo-1540910419892-4a36d2c3266c?auto=format&fit=crop&w=800&q=80"
+    "https://images.unsplash.com/photo-1541872703-74c5e44368f9?auto=format&fit=crop&w=1200&q=85",
+    "https://images.unsplash.com/photo-1529107386315-e1a2ed48a620?auto=format&fit=crop&w=1200&q=85",
+    "https://images.unsplash.com/photo-1540910419892-4a36d2c3266c?auto=format&fit=crop&w=1200&q=85"
   ],
   tech: [
-    "https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=800&q=80",
-    "https://images.unsplash.com/photo-1485827404703-89b55fcc595e?auto=format&fit=crop&w=800&q=80",
-    "https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?auto=format&fit=crop&w=800&q=80"
+    "https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=1200&q=85",
+    "https://images.unsplash.com/photo-1485827404703-89b55fcc595e?auto=format&fit=crop&w=1200&q=85",
+    "https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?auto=format&fit=crop&w=1200&q=85"
   ],
   science: [
-    "https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=800&q=80",
-    "https://images.unsplash.com/photo-1507679799987-c73779587ccf?auto=format&fit=crop&w=800&q=80",
-    "https://images.unsplash.com/photo-1532094349884-543bc11b234d?auto=format&fit=crop&w=800&q=80"
+    "https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=1200&q=85",
+    "https://images.unsplash.com/photo-1507679799987-c73779587ccf?auto=format&fit=crop&w=1200&q=85",
+    "https://images.unsplash.com/photo-1532094349884-543bc11b234d?auto=format&fit=crop&w=1200&q=85"
   ],
   health: [
-    "https://images.unsplash.com/photo-1505751172876-fa1923c5c528?auto=format&fit=crop&w=800&q=80",
-    "https://images.unsplash.com/photo-1530026405186-ed1ea0ac7a63?auto=format&fit=crop&w=800&q=80",
-    "https://images.unsplash.com/photo-1584036561566-baf241f2c44e?auto=format&fit=crop&w=800&q=80"
+    "https://images.unsplash.com/photo-1505751172876-fa1923c5c528?auto=format&fit=crop&w=1200&q=85",
+    "https://images.unsplash.com/photo-1530026405186-ed1ea0ac7a63?auto=format&fit=crop&w=1200&q=85",
+    "https://images.unsplash.com/photo-1584036561566-baf241f2c44e?auto=format&fit=crop&w=1200&q=85"
   ],
   sports: [
-    "https://images.unsplash.com/photo-1461896836934-ffe607ba8211?auto=format&fit=crop&w=800&q=80",
-    "https://images.unsplash.com/photo-1508098682722-e99c43a406b2?auto=format&fit=crop&w=800&q=80",
-    "https://images.unsplash.com/photo-1517649763962-0c623066013b?auto=format&fit=crop&w=800&q=80"
+    "https://images.unsplash.com/photo-1461896836934-ffe607ba8211?auto=format&fit=crop&w=1200&q=85",
+    "https://images.unsplash.com/photo-1508098682722-e99c43a406b2?auto=format&fit=crop&w=1200&q=85",
+    "https://images.unsplash.com/photo-1517649763962-0c623066013b?auto=format&fit=crop&w=1200&q=85"
   ],
   business: [
-    "https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?auto=format&fit=crop&w=800&q=80",
-    "https://images.unsplash.com/photo-1591696205602-2f950c417cb9?auto=format&fit=crop&w=800&q=80",
-    "https://images.unsplash.com/photo-1460925895917-afdab827c52f?auto=format&fit=crop&w=800&q=80"
+    "https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?auto=format&fit=crop&w=1200&q=85",
+    "https://images.unsplash.com/photo-1591696205602-2f950c417cb9?auto=format&fit=crop&w=1200&q=85",
+    "https://images.unsplash.com/photo-1460925895917-afdab827c52f?auto=format&fit=crop&w=1200&q=85"
   ],
   entertainment: [
-    "https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?auto=format&fit=crop&w=800&q=80",
-    "https://images.unsplash.com/photo-1470225620780-dba8ba36b745?auto=format&fit=crop&w=800&q=80",
-    "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?auto=format&fit=crop&w=800&q=80"
+    "https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?auto=format&fit=crop&w=1200&q=85",
+    "https://images.unsplash.com/photo-1470225620780-dba8ba36b745?auto=format&fit=crop&w=1200&q=85",
+    "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?auto=format&fit=crop&w=1200&q=85"
   ],
   general: [
-    "https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=800&q=80",
-    "https://images.unsplash.com/photo-1495020689067-958852a6565d?auto=format&fit=crop&w=800&q=80"
+    "https://images.unsplash.com/photo-1504711434969-e33886168f5c?auto=format&fit=crop&w=1200&q=85",
+    "https://images.unsplash.com/photo-1495020689067-958852a6565d?auto=format&fit=crop&w=1200&q=85",
+    "https://images.unsplash.com/photo-1585829365295-ab7cd400c167?auto=format&fit=crop&w=1200&q=85"
   ]
 };
 
@@ -396,18 +397,15 @@ export async function fetchNews() {
         }
       }
 
-      // STEP 3: Fallback to publisher logo (isLogo) using Google favicon service
-      if (!imageUrl && sourceDomain) {
-        imageUrl = `https://www.google.com/s2/favicons?domain=${sourceDomain}&sz=128`;
-        isLogo = true;
-        imageSource = "publisher-logo";
-      }
-
-      // STEP 4: Fallback to deterministic curated category template
+      // STEP 3: Thematic editorial fallback (Unsplash, 1200px, isThematic=true)
+      // NOTE: We skip the Google favicon/logo fallback entirely — it produces
+      // stretched, blurry logos that break the editorial aesthetic.
+      let isThematic = false;
       if (!imageUrl) {
         imageUrl = getDeterministicImage(title);
+        isThematic = true;
         isLogo = false;
-        imageSource = "unsplash-template";
+        imageSource = "unsplash-thematic";
       }
 
       // ─────────────────────────────────────────────────
@@ -453,7 +451,7 @@ export async function fetchNews() {
       console.log(`  Title:  "${title.substring(0, 60)}"`);
       console.log(`  Source: "${parsedSourceName}"`);
       console.log(`  Image:  "${imageUrl?.substring(0, 80)}"`);
-      console.log(`  isLogo: ${isLogo} | via: ${imageSource}`);
+      console.log(`  isLogo: ${isLogo} | isThematic: ${isThematic} | via: ${imageSource}`);
       console.log(`  Related Sources Extracted:`, JSON.stringify(relatedSources, null, 2));
 
       await prisma.article.upsert({
@@ -464,6 +462,7 @@ export async function fetchNews() {
           content,
           imageUrl,
           isLogo,
+          isThematic,
           sourceName: parsedSourceName,
           publishedAt,
           sourceId: existingSource ? existingSource.id : null,
@@ -476,6 +475,7 @@ export async function fetchNews() {
           summary,
           imageUrl,
           isLogo,
+          isThematic,
           sourceName: parsedSourceName,
           publishedAt,
           sourceId: existingSource ? existingSource.id : null,

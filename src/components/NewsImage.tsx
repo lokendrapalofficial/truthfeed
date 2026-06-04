@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useState } from "react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
+import { Camera } from "lucide-react";
 
 interface NewsImageProps {
   url: string;
@@ -9,6 +10,7 @@ interface NewsImageProps {
   sourceName: string;
   imageUrl?: string | null;
   isLogo?: boolean;
+  isThematic?: boolean;
   className?: string;
 }
 
@@ -48,9 +50,16 @@ const getPublisherDomain = (sourceName: string): string => {
   if (name.includes("wired")) return "wired.com";
   if (name.includes("slate")) return "slate.com";
   if (name.includes("verge")) return "theverge.com";
-  
+
   const cleanName = name.replace(/[^a-z0-9]/g, "");
   return `${cleanName}.com`;
+};
+
+const getInitials = (name: string): string => {
+  if (!name) return "TF";
+  const parts = name.trim().split(/\s+/);
+  if (parts.length === 1) return parts[0].substring(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 };
 
 export default function NewsImage({
@@ -59,29 +68,26 @@ export default function NewsImage({
   sourceName,
   imageUrl,
   isLogo = false,
-  className = "w-full h-full object-cover"
+  isThematic = false,
+  className = "w-full h-full object-cover",
 }: NewsImageProps) {
   const [logoState, setLogoState] = useState<"clearbit" | "google" | "initials">("clearbit");
   const [imageError, setImageError] = useState(false);
-
-  const getInitials = (name: string): string => {
-    if (!name) return "TF";
-    const parts = name.trim().split(/\s+/);
-    if (parts.length === 1) return parts[0].substring(0, 2).toUpperCase();
-    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-  };
+  const [loaded, setLoaded] = useState(false);
 
   const domain = getPublisherDomain(sourceName);
   const initials = getInitials(sourceName);
   const fallbackLogoUrl = `https://logo.clearbit.com/${domain}`;
 
-  // 1. If the article image is marked as a logo, render centered & styled inside compact box
+  // ── Branch 1: Logo display (isLogo=true, image present, no error) ──
   if (isLogo && imageUrl && !imageError) {
     return (
       <div className="w-full h-full flex items-center justify-center p-8 bg-gray-50 dark:bg-slate-800 transition-colors duration-300 relative select-none">
         <motion.img
           src={imageUrl}
           alt={`${sourceName} Logo`}
+          loading="lazy"
+          decoding="async"
           className="max-h-24 max-w-[85%] object-contain filter dark:brightness-95"
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
@@ -92,7 +98,7 @@ export default function NewsImage({
     );
   }
 
-  // 2. Custom fallback logo view on image error or missing image
+  // ── Branch 2: Error or no image — elegant gradient fallback with publisher identity ──
   if (imageError || !imageUrl) {
     return (
       <div className="absolute inset-0 bg-gradient-to-br from-gray-100 to-gray-200 dark:from-slate-800 dark:to-slate-900 flex flex-col items-center justify-center w-full h-full select-none gap-2 p-4 text-center">
@@ -101,6 +107,8 @@ export default function NewsImage({
             <img
               src={fallbackLogoUrl}
               alt={sourceName}
+              loading="lazy"
+              decoding="async"
               className="w-full h-full object-contain"
               onError={() => setLogoState("google")}
             />
@@ -109,6 +117,8 @@ export default function NewsImage({
             <img
               src={`https://www.google.com/s2/favicons?sz=128&domain=${domain}`}
               alt={sourceName}
+              loading="lazy"
+              decoding="async"
               className="w-full h-full object-contain"
               onError={() => setLogoState("initials")}
             />
@@ -126,17 +136,54 @@ export default function NewsImage({
     );
   }
 
-  // 3. Normal cover image display
+  // ── Branch 3: Normal editorial image (with skeleton loader + optional thematic badge) ──
   return (
-    <motion.img
-      src={imageUrl}
-      alt={title}
-      crossOrigin="anonymous"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      transition={{ duration: 0.3 }}
-      className={className}
-      onError={() => setImageError(true)}
-    />
+    <div className="relative w-full h-full overflow-hidden">
+      {/* Skeleton loader — shown until image is fully loaded */}
+      <AnimatePresence>
+        {!loaded && (
+          <motion.div
+            key="skeleton"
+            className="absolute inset-0 z-10 bg-gradient-to-r from-stone-100 via-stone-200 to-stone-100 dark:from-slate-800 dark:via-slate-700 dark:to-slate-800 animate-pulse"
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.25 }}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* The actual image */}
+      <motion.img
+        src={imageUrl}
+        alt={title}
+        crossOrigin="anonymous"
+        loading="lazy"
+        decoding="async"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: loaded ? 1 : 0 }}
+        transition={{ duration: 0.35 }}
+        className={className}
+        onLoad={() => setLoaded(true)}
+        onError={() => setImageError(true)}
+      />
+
+      {/* Thematic Image badge — shown when image is a curated Unsplash editorial */}
+      <AnimatePresence>
+        {isThematic && loaded && (
+          <motion.div
+            key="thematic-badge"
+            initial={{ opacity: 0, y: 4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.3, delay: 0.2 }}
+            className="absolute bottom-2 right-2 z-20 flex items-center gap-1 px-2 py-0.5 rounded-full bg-black/50 backdrop-blur-sm border border-white/10"
+          >
+            <Camera className="w-2.5 h-2.5 text-white/70" />
+            <span className="text-[9px] font-semibold uppercase tracking-widest text-white/70 font-sans">
+              Thematic · Unsplash
+            </span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
   );
 }

@@ -185,6 +185,7 @@ export default function ArticleClient({ article, serializedNotes }: ArticleClien
             sourceName={article.sourceName}
             imageUrl={article.imageUrl}
             isLogo={article.isLogo}
+            isThematic={article.isThematic}
             className="w-full h-full object-cover"
           />
         </div>

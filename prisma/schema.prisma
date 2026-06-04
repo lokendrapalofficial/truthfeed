@@ -16,6 +16,7 @@ model Article {
   summary        String?
   imageUrl       String?
   isLogo         Boolean         @default(false)
+  isThematic     Boolean         @default(false)
   sourceName     String
   publishedAt    DateTime
   createdAt      DateTime        @default(now())

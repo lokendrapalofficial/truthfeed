@@ -25,6 +25,7 @@ export interface ArticleMock {
   summary: string;
   imageUrl?: string | null;
   isLogo?: boolean;
+  isThematic?: boolean;
   sourceName: string;
   publishedAt: string;
   factChecks?: FactCheckMock[];
@@ -119,6 +120,7 @@ export default function NewsCard({ article, viewMode = "grid" }: NewsCardProps) 
               sourceName={article.sourceName}
               imageUrl={article.imageUrl}
               isLogo={article.isLogo}
+              isThematic={article.isThematic}
               className="w-full h-full object-cover hover:scale-105 transition-transform duration-300"
             />
           </Link>
@@ -174,6 +176,7 @@ export default function NewsCard({ article, viewMode = "grid" }: NewsCardProps) 
               sourceName={article.sourceName}
               imageUrl={article.imageUrl}
               isLogo={article.isLogo}
+              isThematic={article.isThematic}
               className="w-full h-full object-cover hover:scale-105 transition-transform duration-300"
             />
           </Link>
