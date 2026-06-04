@@ -97,42 +97,82 @@ function extractImageFromHtml(html: string): string | null {
   return match ? match[1] : null;
 }
 
-// Decodes a Google News RSS base64 redirect URL
-function decodeGoogleNewsUrl(googleUrl: string): string | null {
+// Resolve a Google News RSS link to the real article URL by following HTTP redirects.
+// Google News uses a 302 redirect chain — we just follow it with a browser User-Agent.
+async function resolveGoogleNewsRedirect(googleUrl: string): Promise<string | null> {
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 6000);
+
+    const res = await fetch(googleUrl, {
+      signal: controller.signal,
+      redirect: "follow",
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+      },
+    });
+
+    clearTimeout(timeoutId);
+    const finalUrl = res.url;
+
+    // Only use the resolved URL if it's actually a real publisher page
+    if (finalUrl && !finalUrl.includes("news.google.com") && finalUrl.startsWith("http")) {
+      return finalUrl;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+// Keep a simple decode attempt for related article URLs (best-effort, not critical)
+function tryDecodeGoogleNewsUrl(googleUrl: string): string {
   try {
     const urlObj = new URL(googleUrl);
     if (!urlObj.hostname.includes("news.google.com")) return googleUrl;
-    
-    const pathname = urlObj.pathname;
-    const parts = pathname.split('/');
-    const base64Str = parts.find(p => p.startsWith('CBMi') || p.length > 50);
+    const parts = urlObj.pathname.split("/");
+    const base64Str = parts.find((p) => p.startsWith("CBMi") || p.length > 50);
     if (!base64Str) return googleUrl;
-    
-    const cleanedB64 = base64Str.split('?')[0];
-    const buffer = Buffer.from(cleanedB64, 'base64');
-    const utf8Str = buffer.toString('utf8');
-    
-    const httpIndex = utf8Str.indexOf('http');
+    const buffer = Buffer.from(base64Str.split("?")[0], "base64");
+    const utf8Str = buffer.toString("utf8");
+    const httpIndex = utf8Str.indexOf("http");
     if (httpIndex === -1) return googleUrl;
-    
-    const rest = utf8Str.substring(httpIndex);
-    const urlMatch = rest.match(/https?:\/\/[a-zA-Z0-9_\-\.\/\?&\+=\#~%!*':;(),]+/);
+    const urlMatch = utf8Str.substring(httpIndex).match(/https?:\/\/[a-zA-Z0-9_\-\.\/\?&\+=\#~%!*':;(),]+/);
     return urlMatch ? urlMatch[0] : googleUrl;
-  } catch (e) {
+  } catch {
     return googleUrl;
   }
 }
 
-// Helper to filter out typical spacers and tracking pixels
+// Precise ad/tracker/spacer detection — avoids broad substring matches that kill real images.
+// Only blocks genuinely bad URLs using specific patterns.
 function isAdOrSpacerImage(url: string): boolean {
-  const lowercaseUrl = url.toLowerCase();
-  const forbiddenKeywords = ["ad", "banner", "tracking", "spacer", "pixel", "analytics", "doubleclick", "adsystem", "advertisement", "logo", "icon", "favicon", "avatar", "placeholder"];
-  if (forbiddenKeywords.some(kw => lowercaseUrl.includes(kw))) {
-    return true;
-  }
-  if (lowercaseUrl.match(/\b(?:1x1|2x2|3x3|4x4|5x5|8x8|10x10|16x16|32x32|88x31|120x60|120x90|300x50)\b/)) {
-    return true;
-  }
+  const low = url.toLowerCase();
+
+  // Block known ad/tracking domains
+  if (
+    low.includes("doubleclick.net") ||
+    low.includes("googlesyndication") ||
+    low.includes("adsystem") ||
+    low.includes("adservice") ||
+    low.includes("pagead") ||
+    low.includes("adclick")
+  ) return true;
+
+  // Block tiny 1x1 / pixel tracker patterns embedded in URL path
+  if (low.match(/[_\-\/\.](1x1|2x2|spacer|blank|pixel|tracking)[\.\?_]/)) return true;
+
+  // Block standard pixel dimensions that only trackers use
+  if (low.match(/\b(?:1x1|2x2|3x3|4x4|5x5|8x8|10x10|88x31|120x60|120x90|300x50)\b/)) return true;
+
+  // Block actual favicon files (not icons or logos in articles)
+  if (low.match(/\/favicon\.(ico|png|gif)$/)) return true;
+
+  // Block data URIs
+  if (low.startsWith("data:")) return true;
+
   return false;
 }
 
@@ -309,7 +349,7 @@ export async function fetchNews() {
 
       const rawItem = item as any;
       const title = rawItem.title;
-      const url = decodeGoogleNewsUrl(rawItem.link) || rawItem.link;
+      const url = tryDecodeGoogleNewsUrl(rawItem.link);
       const summary = rawItem.contentSnippet || "";
       const content = rawItem.content || rawItem.contentSnippet || "";
       const sourceName = rawItem.source?.text || rawItem.creator || "Google News";
@@ -341,70 +381,59 @@ export async function fetchNews() {
         where: { name: parsedSourceName },
       });
 
-      // ─────────────────────────────────────────────────
-      // ENHANCED 6-STEP IMAGE PIPELINE
-      // ─────────────────────────────────────────────────
+      // ─────────────────────────────────────────────────────────────
+      // ENHANCED IMAGE PIPELINE — Real article photo first
+      // ─────────────────────────────────────────────────────────────
       let imageUrl: string | null = null;
       let isLogo = false;
+      let isThematic = false;
       let imageSource = "none";
 
-      // Resolve source domain upfront (used in STEP 0 and STEP 3)
       const sourceUrl = sourceMap.get(rawItem.link) || null;
       const sourceDomain = extractDomain(sourceUrl);
 
-      // STEP 0a: Try to fetch og:image from the decoded real article URL (server-side)
-      // Note: Google News now uses protobuf-encoded URLs that cannot be decoded.
-      // The `url` variable will still point to news.google.com, so this only triggers
-      // when we successfully decoded the URL.
-      if (url && !url.includes("news.google.com")) {
-        const ogImage = await fetchOgImage(url);
+      // STEP 1: Follow the Google News redirect → get real article URL → fetch og:image
+      // This is the primary path for article-specific hero images.
+      const realArticleUrl = await resolveGoogleNewsRedirect(rawItem.link);
+      if (realArticleUrl) {
+        const ogImage = await fetchOgImage(realArticleUrl);
         if (ogImage) {
           const sanitized = sanitizeAndUpgradeImageUrl(ogImage);
           if (sanitized) {
             imageUrl = sanitized;
-            isLogo = false;
             imageSource = "article-og:image";
           }
         }
       }
 
-      // STEP 0b: Try to fetch og:image from the publisher's HOMEPAGE.
-      // This gives us a clean, representative branded image when the article URL
-      // is not decodable (which is currently the case for all Google News RSS items).
-      if (!imageUrl && sourceDomain) {
-        const homepageUrl = `https://${sourceDomain}`;
-        const ogImage = await fetchOgImage(homepageUrl);
-        if (ogImage) {
-          const sanitized = sanitizeAndUpgradeImageUrl(ogImage);
-          if (sanitized) {
-            imageUrl = sanitized;
-            isLogo = false;
-            imageSource = "homepage-og:image";
-          }
-        }
-      }
-
-      // STEP 1+2: Try RSS multi-tag + HTML description regex extraction
+      // STEP 2: RSS multi-tag extraction (enclosure, media:content, media:thumbnail, HTML img)
       if (!imageUrl) {
         const rawUrl = extractRawImageUrl(rawItem);
         if (rawUrl) {
           const sanitized = sanitizeAndUpgradeImageUrl(rawUrl);
           if (sanitized) {
             imageUrl = sanitized;
-            isLogo = false;
             imageSource = "rss-tag";
           }
         }
       }
 
-      // STEP 3: Thematic editorial fallback (Unsplash, 1200px, isThematic=true)
-      // NOTE: We skip the Google favicon/logo fallback entirely — it produces
-      // stretched, blurry logos that break the editorial aesthetic.
-      let isThematic = false;
+      // STEP 3: Fallback — fetch og:image from publisher homepage
+      if (!imageUrl && sourceDomain) {
+        const homepageOg = await fetchOgImage(`https://${sourceDomain}`);
+        if (homepageOg) {
+          const sanitized = sanitizeAndUpgradeImageUrl(homepageOg);
+          if (sanitized) {
+            imageUrl = sanitized;
+            imageSource = "homepage-og:image";
+          }
+        }
+      }
+
+      // STEP 4: Thematic Unsplash editorial fallback (isThematic=true)
       if (!imageUrl) {
         imageUrl = getDeterministicImage(title);
         isThematic = true;
-        isLogo = false;
         imageSource = "unsplash-thematic";
       }
 
@@ -413,46 +442,21 @@ export async function fetchNews() {
       // ─────────────────────────────────────────────────
       const relatedSources: { title: string; sourceName: string; url: string }[] = [];
       const relatedRegex = /<a href="([^"]+)"[^>]*>([^<]+)<\/a>\s*<font[^>]*>([^<]+)<\/font>/g;
-      
-      // Replace non-breaking spaces with standard spaces before matching to satisfy user regex pattern
       const parseText = (content || "").replace(/&nbsp;/g, " ");
-      
       let match;
       while ((match = relatedRegex.exec(parseText)) !== null) {
         const itemUrl = match[1];
         const itemTitle = match[2];
         const itemSourceName = match[3];
-
-        const cleanTitle = itemTitle
-          .replace(/&amp;/g, "&")
-          .replace(/&quot;/g, '"')
-          .replace(/&apos;/g, "'")
-          .replace(/&#39;/g, "'")
-          .trim();
-          
-        const cleanSourceName = itemSourceName
-          .replace(/&amp;/g, "&")
-          .replace(/&quot;/g, '"')
-          .replace(/&apos;/g, "'")
-          .replace(/&#39;/g, "'")
-          .trim();
-
-        const decodedItemUrl = decodeGoogleNewsUrl(itemUrl) || itemUrl;
-
         relatedSources.push({
-          title: cleanTitle,
-          sourceName: cleanSourceName,
-          url: decodedItemUrl,
+          title: itemTitle.replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&#39;/g, "'").trim(),
+          sourceName: itemSourceName.replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&#39;/g, "'").trim(),
+          url: tryDecodeGoogleNewsUrl(itemUrl),
         });
       }
 
-      // Print extracted parameters to console for verification
-      console.log(`[INGESTION PIPELINE]`);
-      console.log(`  Title:  "${title.substring(0, 60)}"`);
-      console.log(`  Source: "${parsedSourceName}"`);
-      console.log(`  Image:  "${imageUrl?.substring(0, 80)}"`);
-      console.log(`  isLogo: ${isLogo} | isThematic: ${isThematic} | via: ${imageSource}`);
-      console.log(`  Related Sources Extracted:`, JSON.stringify(relatedSources, null, 2));
+      console.log(`[INGESTION] ${imageSource.padEnd(20)} | isThematic:${isThematic} | "${title.substring(0, 55)}"`);
+      console.log(`            Image: ${(imageUrl || 'NULL').substring(0, 80)}`);
 
       await prisma.article.upsert({
         where: { url },
