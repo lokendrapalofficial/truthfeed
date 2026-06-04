@@ -510,9 +510,6 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
                     <h2 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
                       Latest Updates
                     </h2>
-                    <span className="text-xs text-slate-400 dark:text-slate-500 font-medium">
-                      Viewing as {viewMode === "grid" ? "Grid" : "List"}
-                    </span>
                   </div>
 
                   {feedArticles.length > 0 ? (

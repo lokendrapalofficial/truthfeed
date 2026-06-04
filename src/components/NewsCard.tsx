@@ -180,9 +180,21 @@ export default function NewsCard({ article, viewMode = "grid" }: NewsCardProps) 
                 {article.title}
               </Link>
             </h3>
-            <p className="text-xs text-stone-600 dark:text-slate-400 line-clamp-2 leading-relaxed">
-              {article.summary || article.content}
-            </p>
+            {article.analysis?.briefing ? (
+              <p className="text-xs text-stone-600 dark:text-slate-400 line-clamp-2 leading-relaxed font-sans">
+                {article.analysis.briefing}
+              </p>
+            ) : (
+              <div className="flex flex-col gap-1 mb-1">
+                <span className="text-[9px] text-slate-400 dark:text-slate-500 font-mono italic animate-pulse">
+                  Drafting brief...
+                </span>
+                <div className="animate-pulse flex flex-col gap-1">
+                  <div className="h-2 bg-slate-100 dark:bg-slate-800 rounded w-11/12" />
+                  <div className="h-2 bg-slate-100 dark:bg-slate-800 rounded w-3/4" />
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 pt-2 font-mono border-t border-stone-50 dark:border-slate-750/50 mt-1">
@@ -235,9 +247,21 @@ export default function NewsCard({ article, viewMode = "grid" }: NewsCardProps) 
               {article.title}
             </Link>
           </h3>
-          <p className="text-sm text-slate-500 dark:text-slate-400 line-clamp-1 mb-3">
-            {article.summary || article.content}
-          </p>
+          {article.analysis?.briefing ? (
+            <p className="text-sm text-slate-500 dark:text-slate-400 line-clamp-1 mb-3 font-sans leading-relaxed">
+              {article.analysis.briefing}
+            </p>
+          ) : (
+            <div className="flex flex-col gap-1 mb-3">
+              <span className="text-[10px] text-slate-400 dark:text-slate-500 font-mono italic animate-pulse">
+                Drafting brief...
+              </span>
+              <div className="animate-pulse flex flex-col gap-1">
+                <div className="h-2 bg-slate-100 dark:bg-slate-800 rounded w-11/12" />
+                <div className="h-2 bg-slate-100 dark:bg-slate-800 rounded w-3/4" />
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
