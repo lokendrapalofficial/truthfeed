@@ -111,6 +111,7 @@ export default async function ArticlePage({ params }: ArticlePageProps) {
       sourceOrganization: fc.sourceOrganization,
       factCheckUrl: fc.factCheckUrl,
     })),
+    relatedSources: article.relatedSources ? JSON.parse(JSON.stringify(article.relatedSources)) : [],
   };
 
   return (

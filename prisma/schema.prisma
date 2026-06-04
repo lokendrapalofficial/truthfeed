@@ -23,6 +23,8 @@ model Article {
   sourceId       String?
   source         Source?         @relation(fields: [sourceId], references: [id])
   communityNotes CommunityNote[]
+  relatedSources Json?
+  analysis       Analysis?
 }
 
 model Source {
@@ -86,4 +88,12 @@ model CommunityNote {
   upvotes    Int      @default(0)
   downvotes  Int      @default(0)
   createdAt  DateTime @default(now())
+}
+
+model Analysis {
+  id        String   @id @default(cuid())
+  articleId String   @unique
+  article   Article  @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  claim     String
+  createdAt DateTime @default(now())
 }

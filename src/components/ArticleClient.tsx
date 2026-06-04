@@ -11,7 +11,7 @@ import NewsImage from "@/components/NewsImage";
 import VerificationDossier from "@/components/VerificationDossier";
 import { parseRelatedArticles } from "@/lib/rssParser";
 import { useTheme } from "next-themes";
-import { analyzeArticle } from "@/app/actions/analyzeArticle";
+import { extractClaim } from "@/app/actions/extractClaim";
 import { fetchFactChecks } from "@/app/actions/fetchFactChecks";
 
 interface ArticleClientProps {
@@ -64,22 +64,24 @@ export default function ArticleClient({ article, serializedNotes }: ArticleClien
     setVerificationState("loading");
     setErrorMsg(null);
     try {
-      const [analysisRes, factCheckRes] = await Promise.all([
-        analyzeArticle(article.id),
+      const [claimRes, factCheckRes] = await Promise.all([
+        extractClaim(article.id),
         fetchFactChecks(article.title)
       ]);
 
-      let analysis = null;
+      let claimStr = null;
       let primaryFactCheck = null;
 
-      if (analysisRes.success && analysisRes.analysis) {
-        analysis = analysisRes.analysis;
+      if (claimRes.success && claimRes.claim) {
+        claimStr = claimRes.claim;
+      } else {
+        claimStr = article.title;
       }
       if (factCheckRes.success && factCheckRes.reviews && factCheckRes.reviews.length > 0) {
         primaryFactCheck = factCheckRes.reviews[0];
       }
 
-      setAnalysisData(analysis);
+      setAnalysisData(claimStr);
       setFactCheckData(primaryFactCheck);
       setVerificationState("verified");
     } catch (e: any) {
@@ -227,9 +229,8 @@ export default function ArticleClient({ article, serializedNotes }: ArticleClien
                 articleId={article.id}
                 articleTitle={article.title}
                 sourceName={article.sourceName}
-                source={article.source}
-                articleContent={article.content}
-                analysis={analysisData}
+                relatedSources={article.relatedSources}
+                analysisClaim={analysisData}
                 primaryFactCheck={factCheckData}
               />
             </motion.div>

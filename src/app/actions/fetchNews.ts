@@ -410,12 +410,51 @@ export async function fetchNews() {
         imageSource = "unsplash-template";
       }
 
+      // ─────────────────────────────────────────────────
+      // ZERO-COST CONSENSUS RELATED SOURCES PARSER
+      // ─────────────────────────────────────────────────
+      const relatedSources: { title: string; sourceName: string; url: string }[] = [];
+      const relatedRegex = /<a href="([^"]+)"[^>]*>([^<]+)<\/a>\s*<font[^>]*>([^<]+)<\/font>/g;
+      
+      // Replace non-breaking spaces with standard spaces before matching to satisfy user regex pattern
+      const parseText = (content || "").replace(/&nbsp;/g, " ");
+      
+      let match;
+      while ((match = relatedRegex.exec(parseText)) !== null) {
+        const itemUrl = match[1];
+        const itemTitle = match[2];
+        const itemSourceName = match[3];
+
+        const cleanTitle = itemTitle
+          .replace(/&amp;/g, "&")
+          .replace(/&quot;/g, '"')
+          .replace(/&apos;/g, "'")
+          .replace(/&#39;/g, "'")
+          .trim();
+          
+        const cleanSourceName = itemSourceName
+          .replace(/&amp;/g, "&")
+          .replace(/&quot;/g, '"')
+          .replace(/&apos;/g, "'")
+          .replace(/&#39;/g, "'")
+          .trim();
+
+        const decodedItemUrl = decodeGoogleNewsUrl(itemUrl) || itemUrl;
+
+        relatedSources.push({
+          title: cleanTitle,
+          sourceName: cleanSourceName,
+          url: decodedItemUrl,
+        });
+      }
+
       // Print extracted parameters to console for verification
       console.log(`[INGESTION PIPELINE]`);
       console.log(`  Title:  "${title.substring(0, 60)}"`);
       console.log(`  Source: "${parsedSourceName}"`);
       console.log(`  Image:  "${imageUrl?.substring(0, 80)}"`);
       console.log(`  isLogo: ${isLogo} | via: ${imageSource}`);
+      console.log(`  Related Sources Extracted:`, JSON.stringify(relatedSources, null, 2));
 
       await prisma.article.upsert({
         where: { url },
@@ -428,6 +467,7 @@ export async function fetchNews() {
           sourceName: parsedSourceName,
           publishedAt,
           sourceId: existingSource ? existingSource.id : null,
+          relatedSources: relatedSources as any,
         },
         create: {
           title,
@@ -439,6 +479,7 @@ export async function fetchNews() {
           sourceName: parsedSourceName,
           publishedAt,
           sourceId: existingSource ? existingSource.id : null,
+          relatedSources: relatedSources as any,
         },
       });
 
