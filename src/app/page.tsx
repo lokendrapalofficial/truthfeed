@@ -3,7 +3,7 @@ import { prisma } from "@/lib/db";
 import HomepageClient from "@/components/HomepageClient";
 
 // Ensure Next.js doesn't cache this page statically forever so new RSS imports appear
-export const revalidate = 0;
+export const dynamic = "force-dynamic";
 
 export default async function Home() {
   // Query articles and sources in parallel from PostgreSQL
