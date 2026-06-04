@@ -99,5 +99,6 @@ model Analysis {
   wikiContexts Json?
   category     String?
   articleText  String?
+  verification Json?
   createdAt    DateTime @default(now())
 }

@@ -3,11 +3,25 @@
 import { prisma } from "@/lib/db";
 import { groq } from "@/lib/groq";
 import { fetchWikiContext, WikiContext } from "@/lib/wiki";
+import { fetchFactChecks } from "@/app/actions/fetchFactChecks";
 
 export interface GeminiAnalysisResult {
   claim: string;
   verdict: string;
   evidence: string;
+}
+
+export interface VerificationScorecardData {
+  coreClaim: string;
+  consensusScore: number;
+  confidenceLevel: "High" | "Medium" | "Low" | "Conflicting";
+  conflictReport: string;
+  reasoning: string;
+  professionalAudit?: {
+    publisherName: string;
+    textualRating: string;
+    reviewUrl: string;
+  } | null;
 }
 
 // Module-level cache to lock concurrent compilations for the same articleId
@@ -44,7 +58,6 @@ export async function analyzeArticle(
         return { success: false, error: "Article not found in database" };
       }
 
-      // If parameters were passed in, we can use them, but defaults are from the DB article object
       const articleTitle = title || article.title;
       const articleDesc = description || article.summary || article.content || "";
       const articleRelated = relatedSources || article.relatedSources;
@@ -56,34 +69,28 @@ export async function analyzeArticle(
 
       if (cachedAnalysis) {
         try {
-          if (cachedAnalysis.briefing || cachedAnalysis.articleText) {
-            let parsedWiki: WikiContext[] = [];
-            if (cachedAnalysis.wikiContexts) {
-              parsedWiki = (typeof cachedAnalysis.wikiContexts === "string"
+          if (cachedAnalysis.verification) {
+            const parsedWiki = cachedAnalysis.wikiContexts
+              ? (typeof cachedAnalysis.wikiContexts === "string"
                 ? JSON.parse(cachedAnalysis.wikiContexts)
-                : cachedAnalysis.wikiContexts) as WikiContext[];
-            }
+                : cachedAnalysis.wikiContexts) as WikiContext[]
+              : [];
+
+            const parsedVerification = typeof cachedAnalysis.verification === "string"
+              ? JSON.parse(cachedAnalysis.verification)
+              : cachedAnalysis.verification;
+
             return {
               success: true,
-              briefing: cachedAnalysis.briefing || cachedAnalysis.articleText || "",
-              articleText: cachedAnalysis.articleText || cachedAnalysis.briefing || "",
+              briefing: cachedAnalysis.briefing || "",
+              articleText: cachedAnalysis.articleText || "",
               wikiContexts: parsedWiki,
               category: cachedAnalysis.category || "World",
+              verification: parsedVerification as VerificationScorecardData,
             };
           }
-
-          const parsed = JSON.parse(cachedAnalysis.claim);
-          if ((parsed.briefing || parsed.articleText) && Array.isArray(parsed.wikiContexts)) {
-            return {
-              success: true,
-              briefing: (parsed.articleText || parsed.briefing) as string,
-              articleText: (parsed.articleText || parsed.briefing) as string,
-              wikiContexts: parsed.wikiContexts as WikiContext[],
-              category: parsed.category || getBriefingCategory(articleTitle),
-            };
-          }
-        } catch {
-          // Fall back to compiling fresh if cached data was legacy format
+        } catch (cacheError) {
+          console.error("Error reading cached verification scorecard:", cacheError);
         }
       }
 
@@ -104,29 +111,64 @@ export async function analyzeArticle(
 
         const mockCategory = getBriefingCategory(articleTitle);
         
-        const mockArticleText = `PARAMARIBO, Suriname — The developments regarding "${articleTitle.replace(/\s*[-|]\s*[^|]+$/, "")}" have been published across multiple channels. Local authorities and media representatives have confirmed that events are unfolding rapidly, prompting response operations from regional agencies.
+        const mockQuickBrief = `Reports from ${article.sourceName} indicate significant new developments regarding "${articleTitle.replace(/\s*[-|]\s*[^|]+$/, "")}". Local authorities and news outlets have confirmed that events are unfolding rapidly, with emergency response operations active.`;
+
+        const mockDeepDive = `PARAMARIBO, Suriname — The developments regarding "${articleTitle.replace(/\s*[-|]\s*[^|]+$/, "")}" have been published across multiple channels. Local authorities and media representatives have confirmed that events are unfolding rapidly, prompting response operations from regional agencies.
 
 The incident was widely corroborated by international outlets including ${article.sourceName} and global news desks. Journalists are tracking public releases and security updates as verified information continues to emerge from official channels.
 
 Historically, the region has been a focal point for regional trade and partnerships. Documentation from Wikipedia indicates that ${article.sourceName} serves as a key information platform, reporting on local administrative and geographical changes as they happen.`;
 
-        const resultPayload = { briefing: mockArticleText, articleText: mockArticleText, wikiContexts: mockWiki, category: mockCategory };
+        const mockVerification: VerificationScorecardData = {
+          coreClaim: articleTitle,
+          consensusScore: 4,
+          confidenceLevel: "High",
+          conflictReport: "Minor naming differences resolved; primary timeline holds consensus across major desks.",
+          reasoning: `Corroborated by ${article.sourceName} and multiple international news outlets reporting identical core figures.`,
+          professionalAudit: null
+        };
+
+        // Query mock Fact-checks if they match
+        try {
+          const factCheckRes = await fetchFactChecks(articleTitle);
+          if (factCheckRes.success && factCheckRes.reviews && factCheckRes.reviews.length > 0) {
+            const primary = factCheckRes.reviews[0];
+            mockVerification.professionalAudit = {
+              publisherName: primary.publisherName,
+              textualRating: primary.textualRating,
+              reviewUrl: primary.reviewUrl,
+            };
+          }
+        } catch (err) {
+          console.error("Mock factcheck query error:", err);
+        }
+
+        const resultPayload = {
+          briefing: mockQuickBrief,
+          articleText: mockDeepDive,
+          wikiContexts: mockWiki,
+          category: mockCategory,
+          verification: mockVerification
+        };
+
         await prisma.analysis.upsert({
           where: { articleId },
           update: {
-            briefing: mockArticleText,
-            articleText: mockArticleText,
+            briefing: mockQuickBrief,
+            articleText: mockDeepDive,
             wikiContexts: JSON.parse(JSON.stringify(mockWiki)),
             claim: articleTitle,
             category: mockCategory,
+            verification: JSON.parse(JSON.stringify(mockVerification))
           },
           create: {
             articleId,
-            briefing: mockArticleText,
-            articleText: mockArticleText,
+            briefing: mockQuickBrief,
+            articleText: mockDeepDive,
             wikiContexts: JSON.parse(JSON.stringify(mockWiki)),
             claim: articleTitle,
             category: mockCategory,
+            verification: JSON.parse(JSON.stringify(mockVerification))
           },
         });
 
@@ -176,29 +218,33 @@ Historically, the region has been a focal point for regional trade and partnersh
         ? (typeof articleRelated === "string" ? JSON.parse(articleRelated) : JSON.parse(JSON.stringify(articleRelated)))
         : [];
       
-      const briefingResponse = await groq.chat.completions.create({
+      const auditResponse = await groq.chat.completions.create({
         model: "llama-3.3-70b-versatile",
         messages: [
           {
             role: "system",
-            content: `You are a Senior Desk Editor at a global news wire (e.g., Reuters, Associated Press). Your task is to write a definitive, 3-to-4 paragraph news article based on the provided headlines and context.
+            content: `You are an Editorial Desk Chief performing a verification audit at a global news wire. Your task is to analyze the primary news headline and corroborating related sources, and output a JSON object containing a confidence evaluation and synthesized dispatches.
 
 First, classify this news story into one of these four categories: "World", "Sports", "Tech/Business", or "Entertainment".
-Output a JSON object with three keys:
-1) "category": Must be exactly one of: "World", "Sports", "Tech/Business", or "Entertainment".
-2) "articleText": A string containing the synthesized news article compiled using the strict formatting rules below.
-3) "briefing": Legacy key. Fill this with the exact same content as "articleText" for database backward compatibility.
 
-STRICT FORMATTING RULES:
-- Output ONLY plain text paragraphs. 
-- NO Markdown headers (no '###', no '**').
+Output a JSON object with these EXACT keys:
+1) "category": Must be exactly one of: "World", "Sports", "Tech/Business", or "Entertainment".
+2) "quickBrief": A single-paragraph, high-level summary of the news event.
+3) "deepDive": A comprehensive, 3-to-4 paragraph objective journalistic report. Start the first paragraph with a dateline (e.g. 'CITY, Country — ').
+4) "verification": A JSON object containing:
+   - "coreClaim": The specific factual assertion being made in the article headline or description.
+   - "consensusScore": An integer from 0 to 5, indicating how many independent sources corroborate this claim.
+   - "confidenceLevel": A string representing the reliability of the claim. Must be exactly one of: "High", "Medium", "Low", or "Conflicting".
+   - "conflictReport": A string indicating if the sources agree, or if there are discrepancies in numbers/timelines.
+   - "reasoning": A single sentence explaining why this confidence level and score were assigned.
+
+STRICT FORMATTING RULES FOR WRITING prose (quickBrief and deepDive):
+- Output ONLY plain text dispatches inside the JSON fields.
+- NO Markdown headers (no '###', no '**' formatting).
 - NO bullet points.
 - NO emojis.
 - NO AI cliches ('delve', 'tapestry', 'crucial').
-- Start the first paragraph with a journalistic dateline (e.g., 'CITY, Country — ').
-- In the second paragraph, naturally cite the corroborating sources (e.g., 'according to BBC, CBS...').
-- In the final paragraph, weave in the background context.
-- Just write beautiful, objective, cohesive journalistic prose.`
+- Just write objective, active-voice, professional journalistic prose.`
           },
           {
             role: "user",
@@ -214,12 +260,12 @@ ${wikiContexts.length > 0 ? wikiContexts.map(w => `Entity: ${w.title}\nBackgroun
         temperature: 0.2,
       });
 
-      const briefingContent = briefingResponse.choices[0]?.message?.content;
+      const briefingContent = auditResponse.choices[0]?.message?.content;
       if (!briefingContent) {
         return { success: false, error: "Failed to compile Briefing text from Groq" };
       }
 
-      let parsedBriefing;
+      let parsedBriefing: any;
       try {
         parsedBriefing = JSON.parse(briefingContent);
       } catch (parseError) {
@@ -228,32 +274,61 @@ ${wikiContexts.length > 0 ? wikiContexts.map(w => `Entity: ${w.title}\nBackgroun
       }
 
       const category = parsedBriefing.category || "World";
-      const articleText = parsedBriefing.articleText || parsedBriefing.briefing || "";
+      const quickBrief = parsedBriefing.quickBrief || "";
+      const deepDive = parsedBriefing.deepDive || "";
+      const verification: VerificationScorecardData = parsedBriefing.verification || {
+        coreClaim: articleTitle,
+        consensusScore: 1,
+        confidenceLevel: "Medium",
+        conflictReport: "Not assessed by AI",
+        reasoning: "Standard fallback evaluation"
+      };
+
+      // 6. Query Google Fact Check API for coreClaim
+      let professionalAudit = null;
+      try {
+        const factCheckRes = await fetchFactChecks(verification.coreClaim || articleTitle);
+        if (factCheckRes.success && factCheckRes.reviews && factCheckRes.reviews.length > 0) {
+          const primary = factCheckRes.reviews[0];
+          professionalAudit = {
+            publisherName: primary.publisherName,
+            textualRating: primary.textualRating,
+            reviewUrl: primary.reviewUrl,
+          };
+        }
+      } catch (fcErr) {
+        console.error("Error retrieving professional fact checks:", fcErr);
+      }
+
+      verification.professionalAudit = professionalAudit;
 
       const resultPayload = {
-        briefing: articleText,
-        articleText,
+        briefing: quickBrief,
+        articleText: deepDive,
         wikiContexts,
         category,
+        verification
       };
 
       // Cache the briefing payload in the database Analysis model
       await prisma.analysis.upsert({
         where: { articleId },
         update: {
-          briefing: articleText,
-          articleText,
+          briefing: quickBrief,
+          articleText: deepDive,
           wikiContexts: JSON.parse(JSON.stringify(wikiContexts)),
           claim: articleTitle,
           category,
+          verification: JSON.parse(JSON.stringify(verification))
         },
         create: {
           articleId,
-          briefing: articleText,
-          articleText,
+          briefing: quickBrief,
+          articleText: deepDive,
           wikiContexts: JSON.parse(JSON.stringify(wikiContexts)),
           claim: articleTitle,
           category,
+          verification: JSON.parse(JSON.stringify(verification))
         },
       });
 
@@ -269,4 +344,3 @@ ${wikiContexts.length > 0 ? wikiContexts.map(w => `Entity: ${w.title}\nBackgroun
   inFlightCompilations.set(articleId, promise);
   return promise;
 }
-

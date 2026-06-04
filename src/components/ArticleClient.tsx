@@ -61,7 +61,9 @@ export default function ArticleClient({ article, serializedNotes }: ArticleClien
   const { resolvedTheme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
   const [verificationState, setVerificationState] = useState<"loading" | "verified" | "error">("loading");
-  const [analysisData, setAnalysisData] = useState<string | null>(null);
+  const [analysisData, setAnalysisData] = useState<string | null>(null); // quickBrief
+  const [deepDiveData, setDeepDiveData] = useState<string | null>(null); // deepDive
+  const [verificationData, setVerificationData] = useState<any | null>(null); // verification scorecard
   const [wikiContexts, setWikiContexts] = useState<WikiContext[]>([]);
   const [category, setCategory] = useState<string>("World");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -80,8 +82,10 @@ export default function ArticleClient({ article, serializedNotes }: ArticleClien
         article.relatedSources
       )) as any;
 
-      if (res.success && (res.articleText || res.briefing)) {
-        setAnalysisData(res.articleText || res.briefing);
+      if (res.success && (res.briefing || res.articleText)) {
+        setAnalysisData(res.briefing || res.articleText);
+        setDeepDiveData(res.articleText || res.briefing);
+        setVerificationData(res.verification || null);
         setWikiContexts(res.wikiContexts || []);
         setCategory(res.category || detectedCategory);
         setVerificationState("verified");
@@ -252,8 +256,10 @@ export default function ArticleClient({ article, serializedNotes }: ArticleClien
                 sourceName={article.sourceName}
                 relatedSources={article.relatedSources}
                 briefing={analysisData}
+                articleText={deepDiveData}
                 wikiContexts={wikiContexts}
                 category={category}
+                verification={verificationData}
               />
             </motion.div>
           )}
