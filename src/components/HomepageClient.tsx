@@ -506,7 +506,7 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
                 {/* Trending Verifications */}
                 <div className="bg-slate-50 dark:bg-slate-900/50 rounded-xl p-4 border border-slate-200 dark:border-slate-800">
                   <h3 className="font-extrabold text-sm uppercase tracking-wider text-slate-900 dark:text-slate-100 mb-3 pb-2 border-b border-slate-200 dark:border-slate-800">
-                    Trending Verifications 📈
+                    Trending 📈
                   </h3>
                   <div className="flex flex-col gap-3">
                     {trendingVerified.length > 0 ? (
