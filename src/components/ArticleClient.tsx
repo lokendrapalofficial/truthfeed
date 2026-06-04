@@ -14,6 +14,15 @@ import { useTheme } from "next-themes";
 import { compileBriefing } from "@/app/actions/compileBriefing";
 import { WikiContext } from "@/lib/wiki";
 
+function getBriefingCategory(title: string): string {
+  const t = title.toLowerCase();
+  if (t.match(/\b(court|senate|election|trump|biden|harris|law|government|president|policy|democrat|republican|tax|debt|tariff|white house|congress|politics|world|israel|ceasefire|border|clash|attack|treaty|suriname)\b/)) return "World";
+  if (t.match(/\b(sport|game|nba|nfl|ipl|cricket|cup|stadium|athlete|championship|tennis|soccer|olympics|race|match|win|losing|golf)\b/)) return "Sports";
+  if (t.match(/\b(apple|google|microsoft|ai|meta|nvidia|intel|openai|semiconductor|chip|cybersecurity|software|tech|technology|phone|quantum|robot|market|finance|stock|stocks|economy|business|ceo|company|billion)\b/)) return "Tech/Business";
+  if (t.match(/\b(movie|film|hollywood|actor|actress|music|album|singer|pop|concert|tv|netflix|award|grammy|star|entertainment|celebrity|popstar|rapper)\b/)) return "Entertainment";
+  return "World";
+}
+
 interface ArticleClientProps {
   article: any;
   serializedNotes: NoteItem[];
@@ -54,6 +63,7 @@ export default function ArticleClient({ article, serializedNotes }: ArticleClien
   const [verificationState, setVerificationState] = useState<"idle" | "loading" | "verified" | "error">("idle");
   const [analysisData, setAnalysisData] = useState<string | null>(null);
   const [wikiContexts, setWikiContexts] = useState<WikiContext[]>([]);
+  const [category, setCategory] = useState<string>("World");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [loadingSteps, setLoadingSteps] = useState<{ text: string; status: "pending" | "done" | "idle" }[]>([
     { text: "Ingesting RSS feeds...", status: "idle" },
@@ -70,12 +80,16 @@ export default function ArticleClient({ article, serializedNotes }: ArticleClien
     setVerificationState("loading");
     setErrorMsg(null);
 
-    // Reset steps
+    const detectedCategory = getBriefingCategory(article.title);
+    const categoryLabel = detectedCategory === "Tech/Business" ? "Tech/Business" : detectedCategory;
+    const dossierLabel = detectedCategory === "Tech/Business" ? "Market & Tech Briefing" : `${detectedCategory} Dossier`;
+
+    // Reset steps dynamically
     setLoadingSteps([
       { text: "Ingesting RSS feeds...", status: "pending" },
-      { text: "Extracting key entities...", status: "idle" },
-      { text: "Querying global knowledge base...", status: "idle" },
-      { text: "Compiling Intelligence Briefing...", status: "idle" }
+      { text: `Classifying domain (${categoryLabel})...`, status: "idle" },
+      { text: "Querying knowledge base...", status: "idle" },
+      { text: `Compiling ${dossierLabel}...`, status: "idle" }
     ]);
 
     // Simulating progressive terminal updates
@@ -115,12 +129,14 @@ export default function ArticleClient({ article, serializedNotes }: ArticleClien
         new Promise(resolve => setTimeout(resolve, 2500))
       ]);
 
-      if (compileRes.success && compileRes.briefing) {
-        setAnalysisData(compileRes.briefing);
-        setWikiContexts(compileRes.wikiContexts || []);
+      const res = compileRes as any;
+      if (res.success && res.briefing) {
+        setAnalysisData(res.briefing);
+        setWikiContexts(res.wikiContexts || []);
+        setCategory(res.category || detectedCategory);
         setVerificationState("verified");
       } else {
-        setErrorMsg(compileRes.error || "Briefing compilation failed.");
+        setErrorMsg(res.error || "Briefing compilation failed.");
         setVerificationState("error");
       }
     } catch (e: any) {
@@ -285,6 +301,7 @@ export default function ArticleClient({ article, serializedNotes }: ArticleClien
               relatedSources={article.relatedSources}
               briefing={null}
               wikiContexts={[]}
+              category={getBriefingCategory(article.title)}
             />
           </div>
         )}
@@ -303,6 +320,7 @@ export default function ArticleClient({ article, serializedNotes }: ArticleClien
                 relatedSources={article.relatedSources}
                 briefing={analysisData}
                 wikiContexts={wikiContexts}
+                category={category}
               />
             </motion.div>
           )}

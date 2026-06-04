@@ -97,5 +97,6 @@ model Analysis {
   claim        String
   briefing     String?
   wikiContexts Json?
+  category     String?
   createdAt    DateTime @default(now())
 }

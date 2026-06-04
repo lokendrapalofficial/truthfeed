@@ -12,6 +12,7 @@ interface VerificationDossierProps {
   relatedSources?: any; // JSON array from database
   briefing: string | null;
   wikiContexts: WikiContext[];
+  category?: string;
 }
 
 export default function VerificationDossier({
@@ -19,6 +20,7 @@ export default function VerificationDossier({
   relatedSources,
   briefing,
   wikiContexts,
+  category,
 }: VerificationDossierProps) {
   const sourcesList = Array.isArray(relatedSources) ? relatedSources : [];
 
@@ -26,14 +28,36 @@ export default function VerificationDossier({
     <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-6 shadow-sm transition-colors duration-300 flex flex-col gap-6">
       
       {/* Top Header Section */}
-      <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
-        <div className="flex items-center gap-1.5">
-          <span className="h-2 w-2 rounded-full bg-blue-500 animate-pulse" />
-          <span className="font-mono text-xs font-black tracking-widest text-slate-800 dark:text-slate-200 uppercase">
-            Strategic Intelligence Briefing
-          </span>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between border-b border-slate-100 dark:border-slate-800 pb-3 gap-2">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-1.5 font-mono">
+            <span className="h-2 w-2 rounded-full bg-blue-500 animate-pulse" />
+            <span className="text-xs font-black tracking-widest text-slate-800 dark:text-slate-200 uppercase">
+              Strategic Intelligence Briefing
+            </span>
+          </div>
+          {/* Domain Badge */}
+          {category && (
+            <span className={`text-[9.5px] font-black tracking-wider uppercase px-2.5 py-0.5 rounded-full border font-sans ${
+              category.toLowerCase().includes("sport")
+                ? "bg-emerald-50 text-emerald-700 border-emerald-250 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-800"
+                : category.toLowerCase().includes("tech")
+                ? "bg-purple-50 text-purple-700 border-purple-250 dark:bg-purple-950/40 dark:text-purple-450 dark:border-purple-800"
+                : category.toLowerCase().includes("entertain")
+                ? "bg-pink-50 text-pink-700 border-pink-250 dark:bg-pink-950/40 dark:text-pink-400 dark:border-pink-800"
+                : "bg-blue-50 text-blue-700 border-blue-250 dark:bg-blue-950/40 dark:text-blue-450 dark:border-blue-800"
+            }`}>
+              {category.toLowerCase().includes("sport")
+                ? "🏆 SPORTS DOSSIER"
+                : category.toLowerCase().includes("tech")
+                ? "💼 MARKET & TECH BRIEFING"
+                : category.toLowerCase().includes("entertain")
+                ? "🎬 CULTURE & MEDIA"
+                : "🌍 GLOBAL INTELLIGENCE"}
+            </span>
+          )}
         </div>
-        <span className="text-[9px] font-mono tracking-wider font-extrabold uppercase bg-slate-50 text-slate-500 dark:bg-slate-800/60 dark:text-slate-400 px-2 py-0.5 border border-slate-200 dark:border-slate-800 rounded">
+        <span className="text-[9px] font-mono tracking-wider font-extrabold uppercase bg-slate-50 text-slate-500 dark:bg-slate-800/60 dark:text-slate-400 px-2 py-0.5 border border-slate-200 dark:border-slate-800 rounded self-start sm:self-auto">
           Classified: Public Access
         </span>
       </div>
