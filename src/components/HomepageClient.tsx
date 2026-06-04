@@ -28,10 +28,8 @@ interface HomepageClientProps {
 const CATEGORIES = [
   { id: "top", label: "Top Stories" },
   { id: "verified", label: "Verified 🟢" },
-  { id: "conflicting", label: "Conflicting ⚠️" },
-  { id: "india", label: "India" },
+  { id: "foryou", label: "For You" },
   { id: "world", label: "World" },
-  { id: "local", label: "Local" },
   { id: "business", label: "Business" },
   { id: "technology", label: "Technology" },
   { id: "entertainment", label: "Entertainment" },
@@ -126,7 +124,7 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
   }, [initialArticles]);
 
   const filteredArticles = useMemo(() => {
-    return articles.filter((article) => {
+    let result = articles.filter((article) => {
       // 1. Search Query Match
       const matchesSearch =
         article.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -140,18 +138,30 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
         const isHighCred = article.source?.credibility === "VERY_HIGH" || article.source?.credibility === "HIGH";
         const isHighConf = article.analysis?.verification?.confidenceLevel === "High" || article.analysis?.verification?.confidenceLevel === "HIGH";
         if (!isTrue && !isHighCred && !isHighConf) return false;
-      } else if (activeCategory === "conflicting") {
-        const isConflictFc = article.factChecks?.some((fc: any) => fc.rating === "FALSE" || fc.rating === "MIXED");
-        const isLowCred = article.source?.credibility === "LOW" || article.source?.credibility === "VERY_LOW";
-        const isConflictConf = article.analysis?.verification?.confidenceLevel === "Conflicting" || article.analysis?.verification?.confidenceLevel === "CONFLICTING" || article.analysis?.verification?.confidenceLevel === "Low";
-        if (!isConflictFc && !isLowCred && !isConflictConf) return false;
-      } else if (activeCategory !== "top") {
+      } else if (activeCategory !== "top" && activeCategory !== "foryou") {
         const cat = getArticleCategory(article.title, article.summary);
         if (cat !== activeCategory) return false;
       }
 
       return true;
     });
+
+    // Mimic algorithmic feed personalization for "For You"
+    if (activeCategory === "foryou") {
+      result = [...result].sort((a, b) => {
+        const aVerified = isVerified(a) ? 1 : 0;
+        const bVerified = isVerified(b) ? 1 : 0;
+        if (aVerified !== bVerified) return bVerified - aVerified;
+
+        const aScore = getConsensusScore(a) || 0;
+        const bScore = getConsensusScore(b) || 0;
+        if (aScore !== bScore) return bScore - aScore;
+
+        return new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime();
+      });
+    }
+
+    return result;
   }, [articles, searchQuery, activeCategory]);
 
   const trendingVerified = useMemo(() => {

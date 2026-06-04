@@ -73,8 +73,6 @@ export function formatSmartDate(dateInput: string | Date | number): SmartDateRes
 
 export function getArticleCategory(title: string, summary: string): string {
   const t = `${title} ${summary}`.toLowerCase();
-  if (t.match(/\b(india|indian|delhi|mumbai|bengaluru|modi|gandhi|bollywood|rupee|bjp|isro|hindustan|cbi|lok sabha|rajya sabha)\b/)) return "india";
-  if (t.match(/\b(local|weather|city|traffic|metro|municipal|mayor|resident|neighborhood|community|district|highway|commute|station)\b/)) return "local";
   if (t.match(/\b(apple|google|microsoft|ai|meta|nvidia|intel|openai|semiconductor|chip|cybersecurity|software|tech|technology|phone|quantum|robot|internet|app|mobile)\b/)) return "technology";
   if (t.match(/\b(health|cancer|vaccine|virus|covid|fda|medical|disease|drug|outbreak|clinical|hospital|patient|treatment|doctor|nurse|surgery|mental|wellness|diet)\b/)) return "health";
   if (t.match(/\b(space|mars|nasa|science|telescope|scientific|gene|dna|chemistry|physics|universe|planet|galaxy|scientist)\b/)) return "science";
