@@ -9,6 +9,7 @@ import { fetchNews } from "@/app/actions/fetchNews";
 import BackToTop from "@/components/BackToTop";
 import NewsCard from "@/components/NewsCard";
 import NewsImage from "@/components/NewsImage";
+import NewsRow from "@/components/NewsRow";
 
 interface SourceData {
   id: string;
@@ -141,10 +142,48 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
     }
   };
 
-  // Top Stories Grid Mappings
-  const heroStory = filteredArticles.length > 0 ? filteredArticles[0] : null;
-  const relatedHeroStories = filteredArticles.length > 1 ? filteredArticles.slice(1, 4) : [];
-  const listFeedArticles = filteredArticles.length > 4 ? filteredArticles.slice(4) : filteredArticles.slice(1);
+  // Partitioning logic for carousels
+  const verifiedStories = useMemo(() => {
+    return filteredArticles.filter((art) => 
+      art.factChecks?.some((fc: any) => fc.rating === "TRUE") ||
+      art.source?.credibility === "VERY_HIGH" ||
+      art.source?.credibility === "HIGH"
+    );
+  }, [filteredArticles]);
+
+  const conflictStories = useMemo(() => {
+    return filteredArticles.filter((art) => 
+      art.factChecks?.some((fc: any) => fc.rating === "FALSE" || art.factChecks?.some((fc: any) => fc.rating === "MIXED")) ||
+      art.source?.credibility === "LOW" ||
+      art.source?.credibility === "VERY_LOW"
+    );
+  }, [filteredArticles]);
+
+  const generalStories = useMemo(() => {
+    const ids = new Set([...verifiedStories.map((a) => a.id), ...conflictStories.map((a) => a.id)]);
+    return filteredArticles.filter((art) => !ids.has(art.id));
+  }, [filteredArticles, verifiedStories, conflictStories]);
+
+  const spotlightArticles = useMemo(() => {
+    return filteredArticles.slice(0, 6);
+  }, [filteredArticles]);
+
+  const remainderArticles = useMemo(() => {
+    return filteredArticles.slice(6);
+  }, [filteredArticles]);
+
+  const getCategoryEmoji = (catId: string) => {
+    switch (catId) {
+      case "us": return "🇺🇸";
+      case "world": return "🌍";
+      case "business": return "💼";
+      case "tech": return "💻";
+      case "science": return "🔬";
+      case "health": return "🏥";
+      case "foryou": return "✨";
+      default: return "💡";
+    }
+  };
 
   return (
     <div className="flex flex-col min-h-screen bg-white dark:bg-slate-900 text-gray-900 dark:text-slate-100 font-sans antialiased transition-colors duration-300">
@@ -298,100 +337,41 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
         {filteredArticles.length > 0 ? (
           <div className="space-y-10">
             
-            {/* "Top Stories" Hero Grid Layout (2 Columns) */}
-            {(activeCategory === "top" || activeCategory === "foryou") && heroStory && (
-              <section className="space-y-4">
-                <div className="flex items-center gap-2 border-b border-gray-100 dark:border-slate-800 pb-2">
-                  <h2 className="text-xl font-bold tracking-tight text-gray-900 dark:text-slate-100">Top Stories</h2>
-                </div>
+            {/* Cinematic Scrolling Rows for Home (Top Stories / For You) */}
+            {(activeCategory === "top" || activeCategory === "foryou") && (
+              <div className="space-y-10">
+                {verifiedStories.length > 0 && (
+                  <NewsRow title="Trending & Verified 🟢" articles={verifiedStories.slice(0, 10)} />
+                )}
+                {conflictStories.length > 0 && (
+                  <NewsRow title="Media Conflicts & Debates ⚠️" articles={conflictStories.slice(0, 10)} />
+                )}
+                {generalStories.length > 0 && (
+                  <NewsRow title="Editor's Choice 🎬" articles={generalStories.slice(0, 10)} />
+                )}
+              </div>
+            )}
 
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-                  
-                  {/* Left Column (66% width) - Massive Hero */}
-                  <div className="lg:col-span-8 flex flex-col justify-between border-b lg:border-b-0 lg:border-r border-gray-200 dark:border-slate-700 pb-6 lg:pb-0 lg:pr-8">
-                    <div className="space-y-4">
-                      <div className="aspect-video w-full rounded-lg overflow-hidden bg-gray-100 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 relative">
-                        <Link href={`/article/${heroStory.id}`} className="block w-full h-full">
-                          <NewsImage
-                            url={heroStory.url}
-                            title={heroStory.title}
-                            sourceName={heroStory.sourceName}
-                            imageUrl={heroStory.imageUrl}
-                            isLogo={heroStory.isLogo}
-                            isThematic={heroStory.isThematic}
-                            className="w-full h-full object-cover hover:scale-101 transition-transform duration-300"
-                          />
-                        </Link>
-                      </div>
-                      <h3 className="text-2xl font-extrabold tracking-tight text-gray-950 dark:text-slate-100 leading-tight hover:text-gray-700 dark:hover:text-slate-300 transition-colors">
-                        <Link href={`/article/${heroStory.id}`}>{heroStory.title}</Link>
-                      </h3>
-                      <p className="text-sm text-gray-600 dark:text-slate-400 leading-relaxed line-clamp-3">
-                        {heroStory.summary}
-                      </p>
-                    </div>
-
-                    <div className="mt-4 pt-4 border-t border-gray-100 dark:border-slate-800 flex items-center justify-between text-xs text-gray-500 dark:text-slate-500 font-medium font-sans">
-                      <div className="flex items-center gap-1.5">
-                        <span className="font-bold text-gray-800 dark:text-slate-300">{heroStory.sourceName}</span>
-                        <span>•</span>
-                        <span>{formatTimeAgo(heroStory.publishedAt)}</span>
-                      </div>
-                      
-                      {heroStory.factChecks && heroStory.factChecks.length > 0 && (
-                        <span className="inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-50 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400 border border-emerald-250 dark:border-emerald-800">
-                          ✓ Verified
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Right Column (33% width) - related stack of 3 smaller textual articles */}
-                  <div className="lg:col-span-4 flex flex-col justify-between space-y-4">
-                    {relatedHeroStories.length > 0 ? (
-                      <div className="divide-y divide-gray-150 dark:divide-slate-800 space-y-4">
-                        {relatedHeroStories.map((story, idx) => (
-                          <div key={story.id} className={`${idx > 0 ? "pt-4" : ""} space-y-2`}>
-                            <h4 className="text-sm font-bold text-gray-900 dark:text-slate-200 hover:text-gray-700 dark:hover:text-slate-350 leading-snug line-clamp-3">
-                              <Link href={`/article/${story.id}`}>{story.title}</Link>
-                            </h4>
-                            <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-slate-500 font-medium font-sans">
-                              <span className="font-bold text-gray-700 dark:text-slate-400">{story.sourceName}</span>
-                              <span>•</span>
-                              <span>{formatTimeAgo(story.publishedAt)}</span>
-                              
-                              {story.factChecks && story.factChecks.length > 0 && (
-                                <span className="ml-auto inline-flex items-center text-[9px] font-bold px-1.5 py-0.2 rounded bg-emerald-50 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
-                                  ✓ Verified
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="text-gray-400 dark:text-slate-500 text-xs italic py-6 text-center">
-                        Awaiting feed updates
-                      </div>
-                    )}
-                  </div>
-
-                </div>
-              </section>
+            {/* Spotlight Row for Categories (Tech, Science, etc.) */}
+            {activeCategory !== "top" && activeCategory !== "foryou" && spotlightArticles.length > 0 && (
+              <NewsRow 
+                title={`${CATEGORIES.find(c => c.id === activeCategory)?.label} Spotlight ${getCategoryEmoji(activeCategory)}`} 
+                articles={spotlightArticles} 
+              />
             )}
 
             {/* Standard Feed (Grid vs List Toggleable View Mode) */}
             <section className="space-y-4">
-              {((activeCategory === "top" || activeCategory === "foryou") && heroStory) && (
-                <div className="border-b border-gray-150 dark:border-slate-800 pb-2 flex justify-between items-center">
-                  <h3 className="text-sm font-bold uppercase tracking-wider text-gray-500 dark:text-slate-400">More Stories</h3>
-                  <span className="text-[10px] text-gray-400 dark:text-slate-500 font-medium">Viewing as {viewMode === "grid" ? "Grid" : "List"}</span>
-                </div>
-              )}
+              <div className="border-b border-gray-150 dark:border-slate-800 pb-2 flex justify-between items-center">
+                <h3 className="text-sm font-bold uppercase tracking-wider text-gray-500 dark:text-slate-400">
+                  {activeCategory === "top" || activeCategory === "foryou" ? "More Stories" : `All ${CATEGORIES.find(c => c.id === activeCategory)?.label} Stories`}
+                </h3>
+                <span className="text-[10px] text-gray-400 dark:text-slate-500 font-medium">Viewing as {viewMode === "grid" ? "Grid" : "List"}</span>
+              </div>
 
-              {listFeedArticles.length > 0 ? (
+              {((activeCategory === "top" || activeCategory === "foryou" ? filteredArticles : remainderArticles).length > 0) ? (
                 <div className={viewMode === "grid" ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" : "flex flex-col gap-4 max-w-3xl mx-auto"}>
-                  {listFeedArticles.map((article) => (
+                  {(activeCategory === "top" || activeCategory === "foryou" ? filteredArticles : remainderArticles).map((article) => (
                     <NewsCard key={article.id} article={article} viewMode={viewMode} />
                   ))}
                 </div>

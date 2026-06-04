@@ -15,6 +15,7 @@ export default async function Home() {
       include: {
         factChecks: true,
         source: true,
+        analysis: true,
       },
     }),
     prisma.source.findMany(),
@@ -33,6 +34,15 @@ export default async function Home() {
       bias: art.source.bias,
       credibility: art.source.credibility,
       description: art.source.description,
+    } : null,
+    analysis: art.analysis ? {
+      id: art.analysis.id,
+      claim: art.analysis.claim,
+      briefing: art.analysis.briefing,
+      wikiContexts: art.analysis.wikiContexts,
+      category: art.analysis.category,
+      articleText: art.analysis.articleText,
+      verification: art.analysis.verification,
     } : null,
   }));
 

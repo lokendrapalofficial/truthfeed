@@ -97,32 +97,67 @@ function extractImageFromHtml(html: string): string | null {
   return match ? match[1] : null;
 }
 
-// Resolve a Google News RSS link to the real article URL by following HTTP redirects.
-// Google News uses a 302 redirect chain — we just follow it with a browser User-Agent.
+// Resolve a Google News article to the real publisher URL.
+// Uses the Google News batchexecute API protocol to fetch the redirect target.
 async function resolveGoogleNewsRedirect(googleUrl: string): Promise<string | null> {
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 6000);
+    const timeoutId = setTimeout(() => controller.abort(), 7000);
 
     const res = await fetch(googleUrl, {
       signal: controller.signal,
-      redirect: "follow",
       headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language": "en-US,en;q=0.9",
       },
     });
 
     clearTimeout(timeoutId);
-    const finalUrl = res.url;
+    if (!res.ok) return null;
 
-    // Only use the resolved URL if it's actually a real publisher page
-    if (finalUrl && !finalUrl.includes("news.google.com") && finalUrl.startsWith("http")) {
-      return finalUrl;
-    }
-    return null;
-  } catch {
+    const html = await res.text();
+    
+    // Extract the data-p attribute which contains the RPC requirements
+    const dataPMatch = html.match(/<c-wiz[^>]+data-p=["']([^"']+)["']/i);
+    if (!dataPMatch) return null;
+
+    const rawData = dataPMatch[1];
+    const decodedData = rawData.replace(/&quot;/g, '"');
+    
+    // Parse the protobuf-like array payload
+    const obj = JSON.parse(decodedData.replace('%.@.', '["garturlreq",'));
+    const reqPayload = [[
+      'Fbv4je', 
+      JSON.stringify([...obj.slice(0, -6), ...obj.slice(-2)]), 
+      'null', 
+      'generic'
+    ]];
+
+    const payload = new URLSearchParams();
+    payload.append('f.req', JSON.stringify([reqPayload]));
+
+    const postRes = await fetch('https://news.google.com/_/DotsSplashUi/data/batchexecute', {
+      method: 'POST',
+      body: payload.toString(),
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36'
+      }
+    });
+
+    if (!postRes.ok) return null;
+
+    const postData = await postRes.text();
+    const cleanJsonStr = postData.replace(")]}'\n", "");
+    const parsedBatch = JSON.parse(cleanJsonStr);
+    
+    const arrayString = parsedBatch[0][2];
+    const articleUrl = JSON.parse(arrayString)[1];
+    
+    return articleUrl;
+  } catch (e) {
+    console.error("resolveGoogleNewsRedirect error:", e);
     return null;
   }
 }
@@ -176,10 +211,68 @@ function isAdOrSpacerImage(url: string): boolean {
   return false;
 }
 
+// Detect generic publisher branding images (logos, default placeholders, Facebook/Twitter share images)
+// These are returned by some publishers as their homepage og:image — they look terrible as news cards.
+function isGenericBrandingImage(url: string): boolean {
+  const low = url.toLowerCase();
+  
+  // Extract filename
+  const filename = low.substring(low.lastIndexOf('/') + 1).split('?')[0];
+  
+  // If the filename itself is exactly generic, block it unless it's a dynamic story crop
+  const isGenericFilename = 
+    filename === "og-image.jpg" ||
+    filename === "og-image.png" ||
+    filename === "og_image.jpg" ||
+    filename === "og_image.png" ||
+    filename === "og.jpg" ||
+    filename === "og.png" ||
+    filename === "default.jpg" ||
+    filename === "default.png" ||
+    filename === "logo.jpg" ||
+    filename === "logo.png" ||
+    filename === "facebook.jpg" ||
+    filename === "facebook.png" ||
+    filename === "twitter.jpg" ||
+    filename === "twitter.png" ||
+    filename === "share.jpg" ||
+    filename === "share.png" ||
+    filename === "sharing.jpg" ||
+    filename === "sharing.png" ||
+    filename === "image.jpg" ||
+    filename === "image.png";
+
+  if (isGenericFilename) {
+    // Proactively bypass blocking if the URL has dynamic structure:
+    // 1. Contains a date pattern like /2026/06/03/ or 2026-06-03
+    const hasDatePattern = /\/\d{4}\/\d{2}\/\d{2}\//.test(low) || /\/\d{4}-\d{2}-\d{2}/.test(low);
+    // 2. Or is a long URL (> 120 chars) indicating it's a dynamic CDN/CMS path rather than a static logo/fallback
+    const isDynamicPath = low.length > 120;
+    
+    if (hasDatePattern || isDynamicPath) {
+      return false; // Dynamic crop, allow it!
+    }
+    return true; // Simple generic image, block it
+  }
+
+  return (
+    // Keep structural generic paths
+    /defaultpromo/i.test(low) ||             // NYT default
+    /newsgraphics\/images\/icons/i.test(low) || // NYT icon path
+    /euronews-og/i.test(low) ||
+    /tc-logo/i.test(low) ||                  // TechCrunch static logo
+    /forbes_logo/i.test(low) ||
+    /website\/images\//i.test(low) ||
+    /\/icons?\//i.test(low) ||
+    /favicons?/i.test(low)
+  );
+}
+
 // Perform protocol upgrade and boost image resolutions for known CDNs
 function sanitizeAndUpgradeImageUrl(url: string): string | null {
   if (!url) return null;
   if (isAdOrSpacerImage(url)) return null;
+  if (isGenericBrandingImage(url)) return null;
 
   let sanitized = url.trim();
   if (sanitized.startsWith("http://")) {
@@ -267,51 +360,61 @@ async function fetchSourceUrlsMap(): Promise<Map<string, string>> {
   return sourceMap;
 }
 
+// Helper to extract meta tag content attributes robustly
+function extractMetaValue(html: string, nameOrProperty: string): string | null {
+  const metaTags = html.match(/<meta[^>]+>/gi);
+  if (!metaTags) return null;
+  
+  const searchPattern = new RegExp(`(property|name)\\s*=\\s*["']?${nameOrProperty}["']?`, 'i');
+  
+  for (const tag of metaTags) {
+    if (searchPattern.test(tag)) {
+      const contentMatch = tag.match(/content\s*=\s*["']([^"']+)["']/i) 
+        || tag.match(/content\s*=\s*([^\s>]+)/i);
+      if (contentMatch?.[1]) {
+        return contentMatch[1].replace(/&amp;/g, "&").trim();
+      }
+    }
+  }
+  return null;
+}
+
 /**
  * Fetch a page (article or publisher homepage) and extract og:image / twitter:image.
- * Uses a 5-second timeout and reads only the first 20KB (og tags are always in <head>).
  * Returns null on any failure — caller falls through to next pipeline step.
  */
 async function fetchOgImage(pageUrl: string): Promise<string | null> {
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
 
     const res = await fetch(pageUrl, {
       signal: controller.signal,
       headers: {
-        "User-Agent": "Mozilla/5.0 (compatible; TruthFeed/1.0; +https://truthfeed-hazel.vercel.app)",
-        Accept: "text/html,application/xhtml+xml",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Cache-Control": "no-cache",
+        "Pragma": "no-cache"
       },
     });
 
     clearTimeout(timeoutId);
     if (!res.ok) return null;
 
-    const reader = res.body?.getReader();
-    if (!reader) return null;
-
-    let html = "";
-    let totalBytes = 0;
-    const MAX_BYTES = 20 * 1024;
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      html += new TextDecoder().decode(value);
-      totalBytes += value.byteLength;
-      if (totalBytes >= MAX_BYTES) { reader.cancel(); break; }
-    }
+    const html = await res.text();
 
     // Priority 1: og:image
-    const ogMatch = html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i)
-      || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i);
-    if (ogMatch?.[1] && !isAdOrSpacerImage(ogMatch[1])) return ogMatch[1];
+    const ogImage = extractMetaValue(html, "og:image");
+    if (ogImage && !isAdOrSpacerImage(ogImage)) return ogImage;
 
     // Priority 2: twitter:image
-    const twitterMatch = html.match(/<meta[^>]+name=["']twitter:image["'][^>]+content=["']([^"']+)["']/i)
-      || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+name=["']twitter:image["']/i);
-    if (twitterMatch?.[1] && !isAdOrSpacerImage(twitterMatch[1])) return twitterMatch[1];
+    const twitterImage = extractMetaValue(html, "twitter:image");
+    if (twitterImage && !isAdOrSpacerImage(twitterImage)) return twitterImage;
+
+    // Priority 3: standard thumbnail
+    const thumbnail = extractMetaValue(html, "thumbnail");
+    if (thumbnail && !isAdOrSpacerImage(thumbnail)) return thumbnail;
 
     return null;
   } catch {
@@ -349,7 +452,7 @@ export async function fetchNews() {
 
       const rawItem = item as any;
       const title = rawItem.title;
-      const url = tryDecodeGoogleNewsUrl(rawItem.link);
+      let url = tryDecodeGoogleNewsUrl(rawItem.link);
       const summary = rawItem.contentSnippet || "";
       const content = rawItem.content || rawItem.contentSnippet || "";
       const sourceName = rawItem.source?.text || rawItem.creator || "Google News";
@@ -381,6 +484,24 @@ export async function fetchNews() {
         where: { name: parsedSourceName },
       });
 
+      // ─────────────────────────────────────────────────
+      // ZERO-COST CONSENSUS RELATED SOURCES PARSER
+      // ─────────────────────────────────────────────────
+      const relatedSources: { title: string; sourceName: string; url: string }[] = [];
+      const relatedRegex = /<a href="([^"]+)"[^>]*>([^<]+)<\/a>\s*<font[^>]*>([^<]+)<\/font>/g;
+      const parseText = (content || "").replace(/&nbsp;/g, " ");
+      let match;
+      while ((match = relatedRegex.exec(parseText)) !== null) {
+        const itemUrl = match[1];
+        const itemTitle = match[2];
+        const itemSourceName = match[3];
+        relatedSources.push({
+          title: itemTitle.replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&#39;/g, "'").trim(),
+          sourceName: itemSourceName.replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&#39;/g, "'").trim(),
+          url: tryDecodeGoogleNewsUrl(itemUrl),
+        });
+      }
+
       // ─────────────────────────────────────────────────────────────
       // ENHANCED IMAGE PIPELINE — Real article photo first
       // ─────────────────────────────────────────────────────────────
@@ -396,6 +517,7 @@ export async function fetchNews() {
       // This is the primary path for article-specific hero images.
       const realArticleUrl = await resolveGoogleNewsRedirect(rawItem.link);
       if (realArticleUrl) {
+        url = realArticleUrl; // Normalize database unique URL key to the resolved publisher URL
         const ogImage = await fetchOgImage(realArticleUrl);
         if (ogImage) {
           const sanitized = sanitizeAndUpgradeImageUrl(ogImage);
@@ -418,6 +540,28 @@ export async function fetchNews() {
         }
       }
 
+      // STEP 2.5: Consensus relatedSources fallback — try resolving and fetching images from alternative desks
+      if (!imageUrl && relatedSources.length > 0) {
+        for (const source of relatedSources.slice(0, 5)) {
+          try {
+            const resolvedUrl = await resolveGoogleNewsRedirect(source.url);
+            if (resolvedUrl) {
+              const ogImage = await fetchOgImage(resolvedUrl);
+              if (ogImage) {
+                const sanitized = sanitizeAndUpgradeImageUrl(ogImage);
+                if (sanitized) {
+                  imageUrl = sanitized;
+                  imageSource = `related-og:image (${source.sourceName})`;
+                  break;
+                }
+              }
+            }
+          } catch (e) {
+            console.error(`Failed to fetch image from related source ${source.sourceName}:`, e);
+          }
+        }
+      }
+
       // STEP 3: Fallback — fetch og:image from publisher homepage
       if (!imageUrl && sourceDomain) {
         const homepageOg = await fetchOgImage(`https://${sourceDomain}`);
@@ -430,29 +574,10 @@ export async function fetchNews() {
         }
       }
 
-      // STEP 4: Thematic Unsplash editorial fallback (isThematic=true)
       if (!imageUrl) {
         imageUrl = getDeterministicImage(title);
         isThematic = true;
         imageSource = "unsplash-thematic";
-      }
-
-      // ─────────────────────────────────────────────────
-      // ZERO-COST CONSENSUS RELATED SOURCES PARSER
-      // ─────────────────────────────────────────────────
-      const relatedSources: { title: string; sourceName: string; url: string }[] = [];
-      const relatedRegex = /<a href="([^"]+)"[^>]*>([^<]+)<\/a>\s*<font[^>]*>([^<]+)<\/font>/g;
-      const parseText = (content || "").replace(/&nbsp;/g, " ");
-      let match;
-      while ((match = relatedRegex.exec(parseText)) !== null) {
-        const itemUrl = match[1];
-        const itemTitle = match[2];
-        const itemSourceName = match[3];
-        relatedSources.push({
-          title: itemTitle.replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&#39;/g, "'").trim(),
-          sourceName: itemSourceName.replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&#39;/g, "'").trim(),
-          url: tryDecodeGoogleNewsUrl(itemUrl),
-        });
       }
 
       console.log(`[INGESTION] ${imageSource.padEnd(20)} | isThematic:${isThematic} | "${title.substring(0, 55)}"`);

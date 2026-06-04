@@ -85,9 +85,57 @@ function isAdOrSpacerImage(url) {
   return false;
 }
 
+function isGenericBrandingImage(url) {
+  const low = url.toLowerCase();
+  const filename = low.substring(low.lastIndexOf('/') + 1).split('?')[0];
+  
+  const isGenericFilename = 
+    filename === "og-image.jpg" ||
+    filename === "og-image.png" ||
+    filename === "og_image.jpg" ||
+    filename === "og_image.png" ||
+    filename === "og.jpg" ||
+    filename === "og.png" ||
+    filename === "default.jpg" ||
+    filename === "default.png" ||
+    filename === "logo.jpg" ||
+    filename === "logo.png" ||
+    filename === "facebook.jpg" ||
+    filename === "facebook.png" ||
+    filename === "twitter.jpg" ||
+    filename === "twitter.png" ||
+    filename === "share.jpg" ||
+    filename === "share.png" ||
+    filename === "sharing.jpg" ||
+    filename === "sharing.png" ||
+    filename === "image.jpg" ||
+    filename === "image.png";
+
+  if (isGenericFilename) {
+    const hasDatePattern = /\/\d{4}\/\d{2}\/\d{2}\//.test(low) || /\/\d{4}-\d{2}-\d{2}/.test(low);
+    const isDynamicPath = low.length > 120;
+    if (hasDatePattern || isDynamicPath) {
+      return false; // Dynamic crop, allow it!
+    }
+    return true; // Simple generic image, block it
+  }
+
+  return (
+    /defaultpromo/i.test(low) ||
+    /newsgraphics\/images\/icons/i.test(low) ||
+    /euronews-og/i.test(low) ||
+    /tc-logo/i.test(low) ||
+    /forbes_logo/i.test(low) ||
+    /website\/images\//i.test(low) ||
+    /\/icons?\//i.test(low) ||
+    /favicons?/i.test(low)
+  );
+}
+
 function sanitizeAndUpgradeImageUrl(url) {
   if (!url) return null;
   if (isAdOrSpacerImage(url)) return null;
+  if (isGenericBrandingImage(url)) return null;
   let s = url.trim().replace(/^http:\/\//i, "https://");
   if (s.includes("bbci.co.uk")) {
     s = s.replace(/\/news\/(?:240|320|480)\//i, "/news/1024/");
@@ -128,55 +176,122 @@ function extractDomain(urlStr) {
   try { return new URL(urlStr).hostname.replace(/^www\./, ""); } catch { return null; }
 }
 
-// ─── Key fix: Follow HTTP redirect to get real article URL ───────────────────
+function tryDecodeGoogleNewsUrl(googleUrl) {
+  try {
+    const urlObj = new URL(googleUrl);
+    if (!urlObj.hostname.includes("news.google.com")) return googleUrl;
+    const parts = urlObj.pathname.split("/");
+    const base64Str = parts.find((p) => p.startsWith("CBMi") || p.length > 50);
+    if (!base64Str) return googleUrl;
+    const buffer = Buffer.from(base64Str.split("?")[0], "base64");
+    const utf8Str = buffer.toString("utf8");
+    const httpIndex = utf8Str.indexOf("http");
+    if (httpIndex === -1) return googleUrl;
+    const urlMatch = utf8Str.substring(httpIndex).match(/https?:\/\/[a-zA-Z0-9_\-\.\/\?&\+=\#~%!*':;(),]+/);
+    return urlMatch ? urlMatch[0] : googleUrl;
+  } catch {
+    return googleUrl;
+  }
+}
+
+// ─── Key fix: batchexecute resolution to get real article URL ─────────────────
 async function resolveGoogleNewsRedirect(googleUrl) {
   try {
     const controller = new AbortController();
-    setTimeout(() => controller.abort(), 6000);
+    const timeoutId = setTimeout(() => controller.abort(), 7000);
+
     const res = await fetch(googleUrl, {
       signal: controller.signal,
-      redirect: "follow",
       headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.9",
       },
     });
-    const finalUrl = res.url;
-    if (finalUrl && !finalUrl.includes("news.google.com") && finalUrl.startsWith("http")) return finalUrl;
+
+    clearTimeout(timeoutId);
+    if (!res.ok) return null;
+
+    const html = await res.text();
+    const dataPMatch = html.match(/<c-wiz[^>]+data-p=["']([^"']+)["']/i);
+    if (!dataPMatch) return null;
+
+    const rawData = dataPMatch[1];
+    const decodedData = rawData.replace(/&quot;/g, '"');
+    
+    const obj = JSON.parse(decodedData.replace('%.@.', '["garturlreq",'));
+    const reqPayload = [[
+      'Fbv4je', 
+      JSON.stringify([...obj.slice(0, -6), ...obj.slice(-2)]), 
+      'null', 
+      'generic'
+    ]];
+
+    const payload = new URLSearchParams();
+    payload.append('f.req', JSON.stringify([reqPayload]));
+
+    const postRes = await fetch('https://news.google.com/_/DotsSplashUi/data/batchexecute', {
+      method: 'POST',
+      body: payload.toString(),
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36'
+      }
+    });
+
+    if (!postRes.ok) return null;
+
+    const postData = await postRes.text();
+    const cleanJsonStr = postData.replace(")]}'\n", "");
+    const parsedBatch = JSON.parse(cleanJsonStr);
+    
+    const arrayString = parsedBatch[0][2];
+    const articleUrl = JSON.parse(arrayString)[1];
+    
+    return articleUrl;
+  } catch (e) {
     return null;
-  } catch { return null; }
+  }
+}
+
+function extractMetaValue(html, nameOrProperty) {
+  const metaTags = html.match(/<meta[^>]+>/gi);
+  if (!metaTags) return null;
+  const searchPattern = new RegExp(`(property|name)\\s*=\\s*["']?${nameOrProperty}["']?`, 'i');
+  for (const tag of metaTags) {
+    if (searchPattern.test(tag)) {
+      const contentMatch = tag.match(/content\s*=\s*["']([^"']+)["']/i) 
+        || tag.match(/content\s*=\s*([^\s>]+)/i);
+      if (contentMatch?.[1]) {
+        return contentMatch[1].replace(/&amp;/g, "&").trim();
+      }
+    }
+  }
+  return null;
 }
 
 async function fetchOgImage(pageUrl) {
   try {
     const controller = new AbortController();
-    const tid = setTimeout(() => controller.abort(), 5000);
+    const tid = setTimeout(() => controller.abort(), 8000);
     const res = await fetch(pageUrl, {
       signal: controller.signal,
       headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-        Accept: "text/html,application/xhtml+xml",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Cache-Control": "no-cache",
+        "Pragma": "no-cache"
       },
     });
     clearTimeout(tid);
     if (!res.ok) return null;
-    const reader = res.body?.getReader();
-    if (!reader) return null;
-    let html = "", total = 0;
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      html += new TextDecoder().decode(value);
-      total += value.byteLength;
-      if (total >= 20 * 1024) { reader.cancel(); break; }
-    }
-    const og = html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i)
-      || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i);
-    if (og?.[1] && !isAdOrSpacerImage(og[1])) return og[1];
-    const tw = html.match(/<meta[^>]+name=["']twitter:image["'][^>]+content=["']([^"']+)["']/i)
-      || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+name=["']twitter:image["']/i);
-    if (tw?.[1] && !isAdOrSpacerImage(tw[1])) return tw[1];
+    const html = await res.text();
+    const og = extractMetaValue(html, "og:image");
+    if (og && !isAdOrSpacerImage(og)) return og;
+    const tw = extractMetaValue(html, "twitter:image");
+    if (tw && !isAdOrSpacerImage(tw)) return tw;
+    const thumb = extractMetaValue(html, "thumbnail");
+    if (thumb && !isAdOrSpacerImage(thumb)) return thumb;
     return null;
   } catch { return null; }
 }
@@ -235,14 +350,29 @@ async function main() {
     const sourceUrl = sourceMap.get(raw.link) || null;
     const sourceDomain = extractDomain(sourceUrl);
 
+    // Parse related sources first so they are available to Step 2.5
+    const relatedSources = [];
+    const re = /<a href="([^"]+)"[^>]*>([^<]+)<\/a>\s*<font[^>]*>([^<]+)<\/font>/g;
+    const parseText = (content || "").replace(/&nbsp;/g, " ");
+    let m;
+    while ((m = re.exec(parseText)) !== null) {
+      relatedSources.push({
+        url: tryDecodeGoogleNewsUrl(m[1]), 
+        title: m[2].replace(/&amp;/g,"&").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&#39;/g, "'").trim(),
+        sourceName: m[3].replace(/&amp;/g,"&").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&#39;/g, "'").trim(),
+      });
+    }
+
     let imageUrl = null;
     let isLogo = false;
     let isThematic = false;
     let imageSource = "none";
+    let articleUrl = tryDecodeGoogleNewsUrl(raw.link);
 
     // STEP 1: Resolve real article URL via HTTP redirect → og:image
     const realArticleUrl = await resolveGoogleNewsRedirect(raw.link);
     if (realArticleUrl) {
+      articleUrl = realArticleUrl; // Override with resolved URL for database identity
       const og = await fetchOgImage(realArticleUrl);
       if (og) {
         const s = sanitizeAndUpgradeImageUrl(og);
@@ -256,6 +386,28 @@ async function main() {
       if (rawUrl) {
         const s = sanitizeAndUpgradeImageUrl(rawUrl);
         if (s) { imageUrl = s; imageSource = "rss-tag"; }
+      }
+    }
+
+    // STEP 2.5: Consensus relatedSources fallback
+    if (!imageUrl && relatedSources.length > 0) {
+      for (const source of relatedSources.slice(0, 5)) {
+        try {
+          const resolvedUrl = await resolveGoogleNewsRedirect(source.url);
+          if (resolvedUrl) {
+            const og = await fetchOgImage(resolvedUrl);
+            if (og) {
+              const s = sanitizeAndUpgradeImageUrl(og);
+              if (s) {
+                imageUrl = s;
+                imageSource = `related-og:image (${source.sourceName})`;
+                break;
+              }
+            }
+          }
+        } catch (e) {
+          console.error(`Failed to fetch image from related source ${source.sourceName}:`, e);
+        }
       }
     }
 
@@ -275,27 +427,14 @@ async function main() {
       imageSource = "unsplash-thematic";
     }
 
-    const tag = imageSource === "article-og:image" ? "✅ REAL" :
-                imageSource === "rss-tag"          ? "📎 RSS " :
-                imageSource === "homepage-og:image"? "🏠 HOME" : "🖼  THEME";
+    const tag = imageSource.startsWith("article-og:image") ? "✅ REAL" :
+                imageSource.startsWith("rss-tag")          ? "📎 RSS " :
+                imageSource.startsWith("related-og:image")  ? "🤝 COHORT" :
+                imageSource.startsWith("homepage-og:image")? "🏠 HOME" : "🖼  THEME";
 
     console.log(`${tag} [${imageSource.padEnd(20)}] "${title.substring(0, 50)}"`);
     if (realArticleUrl) console.log(`     → resolved: ${realArticleUrl.substring(0, 70)}`);
     console.log(`     → image:    ${(imageUrl||'NULL').substring(0, 70)}`);
-
-    // Upsert using realArticleUrl as url when available (real publisher URL), else keep Google URL
-    const articleUrl = realArticleUrl || raw.link;
-
-    const relatedSources = [];
-    const re = /<a href="([^"]+)"[^>]*>([^<]+)<\/a>\s*<font[^>]*>([^<]+)<\/font>/g;
-    const parseText = (content || "").replace(/&nbsp;/g, " ");
-    let m;
-    while ((m = re.exec(parseText)) !== null) {
-      relatedSources.push({
-        url: m[1], title: m[2].replace(/&amp;/g,"&").trim(),
-        sourceName: m[3].replace(/&amp;/g,"&").trim(),
-      });
-    }
 
     await prisma.article.upsert({
       where: { url: articleUrl },

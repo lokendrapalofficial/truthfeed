@@ -155,7 +155,6 @@ export default function NewsImage({
       <motion.img
         src={imageUrl}
         alt={title}
-        crossOrigin="anonymous"
         loading="lazy"
         decoding="async"
         initial={{ opacity: 0 }}
