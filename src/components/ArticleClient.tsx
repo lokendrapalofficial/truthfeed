@@ -11,8 +11,8 @@ import NewsImage from "@/components/NewsImage";
 import VerificationDossier from "@/components/VerificationDossier";
 import { parseRelatedArticles } from "@/lib/rssParser";
 import { useTheme } from "next-themes";
-import { extractClaim } from "@/app/actions/extractClaim";
-import { fetchFactChecks } from "@/app/actions/fetchFactChecks";
+import { compileBriefing } from "@/app/actions/compileBriefing";
+import { WikiContext } from "@/lib/wiki";
 
 interface ArticleClientProps {
   article: any;
@@ -52,9 +52,15 @@ export default function ArticleClient({ article, serializedNotes }: ArticleClien
   const { resolvedTheme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
   const [verificationState, setVerificationState] = useState<"idle" | "loading" | "verified" | "error">("idle");
-  const [analysisData, setAnalysisData] = useState<any>(null);
-  const [factCheckData, setFactCheckData] = useState<any>(null);
+  const [analysisData, setAnalysisData] = useState<string | null>(null);
+  const [wikiContexts, setWikiContexts] = useState<WikiContext[]>([]);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [loadingSteps, setLoadingSteps] = useState<{ text: string; status: "pending" | "done" | "idle" }[]>([
+    { text: "Ingesting RSS feeds...", status: "idle" },
+    { text: "Extracting key entities...", status: "idle" },
+    { text: "Querying global knowledge base...", status: "idle" },
+    { text: "Compiling Intelligence Briefing...", status: "idle" }
+  ]);
 
   useEffect(() => {
     setMounted(true);
@@ -63,31 +69,68 @@ export default function ArticleClient({ article, serializedNotes }: ArticleClien
   const handleVerify = async () => {
     setVerificationState("loading");
     setErrorMsg(null);
+
+    // Reset steps
+    setLoadingSteps([
+      { text: "Ingesting RSS feeds...", status: "pending" },
+      { text: "Extracting key entities...", status: "idle" },
+      { text: "Querying global knowledge base...", status: "idle" },
+      { text: "Compiling Intelligence Briefing...", status: "idle" }
+    ]);
+
+    // Simulating progressive terminal updates
+    const timer1 = setTimeout(() => {
+      setLoadingSteps(prev => [
+        { ...prev[0], status: "done" },
+        { ...prev[1], status: "pending" },
+        { ...prev[2], status: "idle" },
+        { ...prev[3], status: "idle" }
+      ]);
+    }, 600);
+
+    const timer2 = setTimeout(() => {
+      setLoadingSteps(prev => [
+        { ...prev[0], status: "done" },
+        { ...prev[1], status: "done" },
+        { ...prev[2], status: "pending" },
+        { ...prev[3], status: "idle" }
+      ]);
+    }, 1250);
+
+    const timer3 = setTimeout(() => {
+      setLoadingSteps(prev => [
+        { ...prev[0], status: "done" },
+        { ...prev[1], status: "done" },
+        { ...prev[2], status: "done" },
+        { ...prev[3], status: "pending" }
+      ]);
+    }, 1900);
+
     try {
-      const [claimRes, factCheckRes] = await Promise.all([
-        extractClaim(article.id),
-        fetchFactChecks(article.title)
+      const compilePromise = compileBriefing(article.id);
+
+      // Concurrently run backend compilation and ensure at least 2.5s display for visual flow
+      const [compileRes] = await Promise.all([
+        compilePromise,
+        new Promise(resolve => setTimeout(resolve, 2500))
       ]);
 
-      let claimStr = null;
-      let primaryFactCheck = null;
-
-      if (claimRes.success && claimRes.claim) {
-        claimStr = claimRes.claim;
+      if (compileRes.success && compileRes.briefing) {
+        setAnalysisData(compileRes.briefing);
+        setWikiContexts(compileRes.wikiContexts || []);
+        setVerificationState("verified");
       } else {
-        claimStr = article.title;
+        setErrorMsg(compileRes.error || "Briefing compilation failed.");
+        setVerificationState("error");
       }
-      if (factCheckRes.success && factCheckRes.reviews && factCheckRes.reviews.length > 0) {
-        primaryFactCheck = factCheckRes.reviews[0];
-      }
-
-      setAnalysisData(claimStr);
-      setFactCheckData(primaryFactCheck);
-      setVerificationState("verified");
     } catch (e: any) {
       console.error(e);
       setErrorMsg(e.message || "Failed to execute claim verification.");
       setVerificationState("error");
+    } finally {
+      clearTimeout(timer1);
+      clearTimeout(timer2);
+      clearTimeout(timer3);
     }
   };
 
@@ -185,24 +228,13 @@ export default function ArticleClient({ article, serializedNotes }: ArticleClien
         </section>
 
         {/* ——— VERIFICATION SECTION ——— */}
-        {verificationState !== "verified" && (
+        {(verificationState === "idle" || verificationState === "error") && (
           <div className="flex flex-col items-center justify-center p-6 border border-dashed border-gray-200 dark:border-slate-700 rounded-xl bg-gray-50/50 dark:bg-slate-800/20 text-center gap-4 transition-colors">
             <button
               onClick={handleVerify}
-              disabled={verificationState === "loading"}
-              className="w-full sm:w-auto px-6 h-12 rounded-xl bg-blue-600 hover:bg-blue-700 active:scale-[0.98] disabled:opacity-75 disabled:cursor-not-allowed disabled:active:scale-100 text-white font-bold text-sm tracking-wide shadow-sm transition-all flex items-center justify-center gap-2 cursor-pointer"
+              className="w-full sm:w-auto px-6 h-12 rounded-xl bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white font-bold text-sm tracking-wide shadow-sm transition-all flex items-center justify-center gap-2 cursor-pointer"
             >
-              {verificationState === "loading" ? (
-                <>
-                  <svg className="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                  </svg>
-                  <span>Analyzing claims...</span>
-                </>
-              ) : (
-                <span>🔍 Verify Claim</span>
-              )}
+              <span>🔍 Verify Claim</span>
             </button>
             
             {errorMsg ? (
@@ -218,6 +250,33 @@ export default function ArticleClient({ article, serializedNotes }: ArticleClien
           </div>
         )}
 
+        {/* ——— TERMINAL LOADER SECTION ——— */}
+        {verificationState === "loading" && (
+          <div className="w-full bg-slate-950 border border-slate-800 rounded-xl p-5 font-mono text-xs text-slate-350 shadow-lg space-y-2.5">
+            <div className="flex items-center justify-between border-b border-slate-900 pb-2 text-[10px] text-slate-500 uppercase tracking-widest font-black">
+              <span>🤖 TRUTHFEED INTEL CORE v1.0</span>
+              <span className="flex h-2 w-2 rounded-full bg-blue-500 animate-pulse" />
+            </div>
+            <div className="space-y-1.5 pt-1 text-left">
+              {loadingSteps.map((step, idx) => {
+                if (step.status === "idle") return null;
+                return (
+                  <div key={idx} className="flex items-center gap-2">
+                    {step.status === "done" ? (
+                      <span className="text-emerald-500 font-bold">[✓]</span>
+                    ) : (
+                      <span className="text-blue-400 font-bold animate-pulse">[⟳]</span>
+                    )}
+                    <span className={step.status === "done" ? "text-slate-400 font-medium" : "text-slate-200 font-bold"}>
+                      {step.text}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         <AnimatePresence>
           {verificationState === "verified" && (
             <motion.div
@@ -230,8 +289,8 @@ export default function ArticleClient({ article, serializedNotes }: ArticleClien
                 articleTitle={article.title}
                 sourceName={article.sourceName}
                 relatedSources={article.relatedSources}
-                analysisClaim={analysisData}
-                primaryFactCheck={factCheckData}
+                briefing={analysisData}
+                wikiContexts={wikiContexts}
               />
             </motion.div>
           )}
