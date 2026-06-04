@@ -3,12 +3,19 @@ import { prisma } from "@/lib/db";
 import HomepageClient from "@/components/HomepageClient";
 
 // Ensure Next.js doesn't cache this page statically forever so new RSS imports appear
-export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 export default async function Home() {
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+
   // Query articles and sources in parallel from PostgreSQL
   const [articles, sources] = await Promise.all([
     prisma.article.findMany({
+      where: {
+        publishedAt: {
+          gte: sevenDaysAgo,
+        },
+      },
       orderBy: {
         publishedAt: "desc",
       },
