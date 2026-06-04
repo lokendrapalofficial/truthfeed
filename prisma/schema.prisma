@@ -91,9 +91,11 @@ model CommunityNote {
 }
 
 model Analysis {
-  id        String   @id @default(cuid())
-  articleId String   @unique
-  article   Article  @relation(fields: [articleId], references: [id], onDelete: Cascade)
-  claim     String
-  createdAt DateTime @default(now())
+  id           String   @id @default(cuid())
+  articleId    String   @unique
+  article      Article  @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  claim        String
+  briefing     String?
+  wikiContexts Json?
+  createdAt    DateTime @default(now())
 }

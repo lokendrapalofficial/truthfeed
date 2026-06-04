@@ -252,28 +252,40 @@ export default function ArticleClient({ article, serializedNotes }: ArticleClien
 
         {/* ——— TERMINAL LOADER SECTION ——— */}
         {verificationState === "loading" && (
-          <div className="w-full bg-slate-950 border border-slate-800 rounded-xl p-5 font-mono text-xs text-slate-350 shadow-lg space-y-2.5">
-            <div className="flex items-center justify-between border-b border-slate-900 pb-2 text-[10px] text-slate-500 uppercase tracking-widest font-black">
-              <span>🤖 TRUTHFEED INTEL CORE v1.0</span>
-              <span className="flex h-2 w-2 rounded-full bg-blue-500 animate-pulse" />
+          <div className="space-y-6">
+            <div className="w-full bg-slate-950 border border-slate-800 rounded-xl p-5 font-mono text-xs text-slate-350 shadow-lg space-y-2.5">
+              <div className="flex items-center justify-between border-b border-slate-900 pb-2 text-[10px] text-slate-500 uppercase tracking-widest font-black">
+                <span>🤖 TRUTHFEED INTEL CORE v1.0</span>
+                <span className="flex h-2 w-2 rounded-full bg-blue-500 animate-pulse" />
+              </div>
+              <div className="space-y-1.5 pt-1 text-left">
+                {loadingSteps.map((step, idx) => {
+                  if (step.status === "idle") return null;
+                  return (
+                    <div key={idx} className="flex items-center gap-2">
+                      {step.status === "done" ? (
+                        <span className="text-emerald-500 font-bold">[✓]</span>
+                      ) : (
+                        <span className="text-blue-400 font-bold animate-pulse">[⟳]</span>
+                      )}
+                      <span className={step.status === "done" ? "text-slate-400 font-medium" : "text-slate-200 font-bold"}>
+                        {step.text}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-            <div className="space-y-1.5 pt-1 text-left">
-              {loadingSteps.map((step, idx) => {
-                if (step.status === "idle") return null;
-                return (
-                  <div key={idx} className="flex items-center gap-2">
-                    {step.status === "done" ? (
-                      <span className="text-emerald-500 font-bold">[✓]</span>
-                    ) : (
-                      <span className="text-blue-400 font-bold animate-pulse">[⟳]</span>
-                    )}
-                    <span className={step.status === "done" ? "text-slate-400 font-medium" : "text-slate-200 font-bold"}>
-                      {step.text}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
+
+            {/* VerificationDossier Skeleton Dashboard */}
+            <VerificationDossier
+              articleId={article.id}
+              articleTitle={article.title}
+              sourceName={article.sourceName}
+              relatedSources={article.relatedSources}
+              briefing={null}
+              wikiContexts={[]}
+            />
           </div>
         )}
 

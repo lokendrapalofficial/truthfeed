@@ -26,6 +26,20 @@ export async function compileBriefing(articleId: string) {
 
     if (cachedAnalysis) {
       try {
+        if (cachedAnalysis.briefing) {
+          let parsedWiki: WikiContext[] = [];
+          if (cachedAnalysis.wikiContexts) {
+            parsedWiki = (typeof cachedAnalysis.wikiContexts === "string"
+              ? JSON.parse(cachedAnalysis.wikiContexts)
+              : cachedAnalysis.wikiContexts) as WikiContext[];
+          }
+          return {
+            success: true,
+            briefing: cachedAnalysis.briefing,
+            wikiContexts: parsedWiki,
+          };
+        }
+
         const parsed = JSON.parse(cachedAnalysis.claim);
         if (parsed.briefing && Array.isArray(parsed.wikiContexts)) {
           return {
@@ -59,8 +73,17 @@ export async function compileBriefing(articleId: string) {
       const resultPayload = { briefing: mockBriefing, wikiContexts: mockWiki };
       await prisma.analysis.upsert({
         where: { articleId },
-        update: { claim: JSON.stringify(resultPayload) },
-        create: { articleId, claim: JSON.stringify(resultPayload) },
+        update: {
+          briefing: mockBriefing,
+          wikiContexts: JSON.parse(JSON.stringify(mockWiki)),
+          claim: article.title,
+        },
+        create: {
+          articleId,
+          briefing: mockBriefing,
+          wikiContexts: JSON.parse(JSON.stringify(mockWiki)),
+          claim: article.title,
+        },
       });
 
       return { success: true, ...resultPayload };
@@ -150,8 +173,17 @@ ${wikiContexts.length > 0 ? wikiContexts.map(w => `Entity: ${w.title}\nBackgroun
     // Cache the briefing payload in the database Analysis model
     await prisma.analysis.upsert({
       where: { articleId },
-      update: { claim: JSON.stringify(resultPayload) },
-      create: { articleId, claim: JSON.stringify(resultPayload) },
+      update: {
+        briefing: briefingText,
+        wikiContexts: JSON.parse(JSON.stringify(wikiContexts)),
+        claim: article.title,
+      },
+      create: {
+        articleId,
+        briefing: briefingText,
+        wikiContexts: JSON.parse(JSON.stringify(wikiContexts)),
+        claim: article.title,
+      },
     });
 
     return { success: true, ...resultPayload };
