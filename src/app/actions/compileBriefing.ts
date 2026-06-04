@@ -6,6 +6,7 @@ import { fetchWikiContext, WikiContext } from "@/lib/wiki";
 
 export interface BriefingResult {
   briefing: string;
+  articleText: string;
   wikiContexts: WikiContext[];
   category: string;
 }
@@ -36,7 +37,7 @@ export async function compileBriefing(articleId: string) {
 
     if (cachedAnalysis) {
       try {
-        if (cachedAnalysis.briefing) {
+        if (cachedAnalysis.briefing || cachedAnalysis.articleText) {
           let parsedWiki: WikiContext[] = [];
           if (cachedAnalysis.wikiContexts) {
             parsedWiki = (typeof cachedAnalysis.wikiContexts === "string"
@@ -45,17 +46,19 @@ export async function compileBriefing(articleId: string) {
           }
           return {
             success: true,
-            briefing: cachedAnalysis.briefing,
+            briefing: cachedAnalysis.briefing || cachedAnalysis.articleText || "",
+            articleText: cachedAnalysis.articleText || cachedAnalysis.briefing || "",
             wikiContexts: parsedWiki,
             category: cachedAnalysis.category || "World",
           };
         }
 
         const parsed = JSON.parse(cachedAnalysis.claim);
-        if (parsed.briefing && Array.isArray(parsed.wikiContexts)) {
+        if ((parsed.briefing || parsed.articleText) && Array.isArray(parsed.wikiContexts)) {
           return {
             success: true,
-            briefing: parsed.briefing as string,
+            briefing: (parsed.articleText || parsed.briefing) as string,
+            articleText: (parsed.articleText || parsed.briefing) as string,
             wikiContexts: parsed.wikiContexts as WikiContext[],
             category: parsed.category || getBriefingCategory(article.title),
           };
@@ -81,34 +84,27 @@ export async function compileBriefing(articleId: string) {
       ];
 
       const mockCategory = getBriefingCategory(article.title);
-      const categoryLabel = mockCategory === "Tech/Business" ? "TECH/BUSINESS" : mockCategory.toUpperCase();
       
-      const mockBriefing = `### THE WIRE BRIEF
-The developments regarding "${article.title.replace(/\s*[-|]\s*[^|]+$/, "")}" have been published across multiple channels. According to corroborated reports from ${article.sourceName} and international news agencies, the event details are verified and logged by editorial desks.
+      const mockArticleText = `PARAMARIBO, Suriname — The developments regarding "${article.title.replace(/\s*[-|]\s*[^|]+$/, "")}" have been published across multiple channels. Local authorities and media representatives have confirmed that events are unfolding rapidly, prompting response operations from regional agencies.
 
-### KEY DEVELOPMENTS
-- **Initial Report**: Statement distribution originated via ${article.sourceName}.
-- **Desk Verification**: Desk editors are tracking official releases and public statements.
-- **Entity Scope**: Primary events are located within administrative and regional boundaries.
+The incident was widely corroborated by international outlets including ${article.sourceName} and global news desks. Journalists are tracking public releases and security updates as verified information continues to emerge from official channels.
 
-### GLOBAL CONSENSUS
-The incident is independently verified by regional wire services, indicating a high-confidence factual occurrence.
+Historically, the region has been a focal point for regional trade and partnerships. Documentation from Wikipedia indicates that ${article.sourceName} serves as a key information platform, reporting on local administrative and geographical changes as they happen.`;
 
-### BACKGROUND CONTEXT
-The subject matter in this dispatch aligns with ongoing international updates. Documentation indicates that ${article.sourceName} is a major information network providing localized reporting and wire support.`;
-
-      const resultPayload = { briefing: mockBriefing, wikiContexts: mockWiki, category: mockCategory };
+      const resultPayload = { briefing: mockArticleText, articleText: mockArticleText, wikiContexts: mockWiki, category: mockCategory };
       await prisma.analysis.upsert({
         where: { articleId },
         update: {
-          briefing: mockBriefing,
+          briefing: mockArticleText,
+          articleText: mockArticleText,
           wikiContexts: JSON.parse(JSON.stringify(mockWiki)),
           claim: article.title,
           category: mockCategory,
         },
         create: {
           articleId,
-          briefing: mockBriefing,
+          briefing: mockArticleText,
+          articleText: mockArticleText,
           wikiContexts: JSON.parse(JSON.stringify(mockWiki)),
           claim: article.title,
           category: mockCategory,
@@ -166,32 +162,24 @@ The subject matter in this dispatch aligns with ongoing international updates. D
       messages: [
         {
           role: "system",
-          content: `You are a Senior Desk Editor at a global news wire (e.g., Reuters, Associated Press). Your task is to compile a definitive, human-quality Intelligence Memo based on cross-referenced news headlines and verified encyclopedia context.
+          content: `You are a Pulitzer Prize-winning journalist and Senior Editor. Your task is to write a standard, 3-to-4 paragraph news article that synthesizes breaking news headlines and verified encyclopedia context into a single, cohesive, high-quality story.
 
 First, classify this news story into one of these four categories: "World", "Sports", "Tech/Business", or "Entertainment".
-Output a JSON object with two keys:
+Output a JSON object with three keys:
 1) "category": Must be exactly one of: "World", "Sports", "Tech/Business", or "Entertainment".
-2) "briefing": A markdown string compiled using the exact memo template below.
+2) "articleText": A string containing the synthesized news article compiled using the strict rules below.
+3) "briefing": Legacy key. Fill this with the exact same content as "articleText" for database backward compatibility.
 
-STRICT STYLE RULES:
-- NEVER use AI clichés (e.g., 'delve', 'tapestry', 'crucial', 'paramount', 'in conclusion', 'it is important to note', 'underscores').
-- Write in crisp, objective, active-voice journalistic prose.
-- Use the 'Inverted Pyramid' structure: hard facts first, context second.
-- Do NOT use emojis in the report text. Keep it strictly professional.
-- Explicitly cite the cross-referenced sources in the text to prove verification (e.g., 'according to corroborated reports from BBC, CBS News, and Yahoo').
-
-OUTPUT FORMAT (Markdown for "briefing" key):
-### THE WIRE BRIEF
-(2-3 sentences synthesizing the core undisputed facts from all provided headlines. E.g., 'A mass stabbing in Suriname has left nine dead, including five children, according to corroborated reports from BBC, CBS News, and Yahoo.')
-
-### KEY DEVELOPMENTS
-(3-4 bullet points detailing specific facts extracted from the cross-references, such as the location 'Paramaribo' or specific police statements).
-
-### GLOBAL CONSENSUS
-(A brief, professional assessment of the media cross-reference. E.g., 'This incident is independently verified by five major international news desks, indicating a high-confidence factual event.')
-
-### BACKGROUND CONTEXT
-(Seamlessly weave in the provided Wikipedia context about the location/entities to give the reader necessary geographical or historical background without sounding like an encyclopedia copy-paste.)`
+STRICT RULES:
+- Write exactly a 3-to-4 paragraph news article.
+- NO Markdown headers (do NOT use any "###" or titles).
+- NO bullet points.
+- NO emojis.
+- NO AI clichés (e.g., 'delve', 'tapestry', 'crucial', 'paramount', 'in conclusion', 'it is important to note', 'underscores').
+- Write in beautiful, objective, cohesive, active-voice prose.
+- Start the first paragraph with a journalistic dateline in uppercase (e.g., "PARAMARIBO, Suriname — " or "WASHINGTON, United States — "). Choose the most relevant city/country based on the context.
+- In the second paragraph, naturally weave in the corroborating sources (e.g., "The developments were corroborated by reports from BBC, CBS News, and Yahoo..."). Make sure to mention all key sources provided in the user message.
+- In the final paragraph, naturally weave in the Wikipedia background context seamlessly without sounding like an encyclopedia copy-paste.`
         },
         {
           role: "user",
@@ -221,10 +209,11 @@ ${wikiContexts.length > 0 ? wikiContexts.map(w => `Entity: ${w.title}\nBackgroun
     }
 
     const category = parsedBriefing.category || "World";
-    const briefingText = parsedBriefing.briefing || "";
+    const articleText = parsedBriefing.articleText || parsedBriefing.briefing || "";
 
     const resultPayload = {
-      briefing: briefingText,
+      briefing: articleText,
+      articleText,
       wikiContexts,
       category,
     };
@@ -233,14 +222,16 @@ ${wikiContexts.length > 0 ? wikiContexts.map(w => `Entity: ${w.title}\nBackgroun
     await prisma.analysis.upsert({
       where: { articleId },
       update: {
-        briefing: briefingText,
+        briefing: articleText,
+        articleText,
         wikiContexts: JSON.parse(JSON.stringify(wikiContexts)),
         claim: article.title,
         category,
       },
       create: {
         articleId,
-        briefing: briefingText,
+        briefing: articleText,
+        articleText,
         wikiContexts: JSON.parse(JSON.stringify(wikiContexts)),
         claim: article.title,
         category,

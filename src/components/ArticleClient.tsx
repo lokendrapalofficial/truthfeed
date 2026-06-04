@@ -65,11 +65,6 @@ export default function ArticleClient({ article, serializedNotes }: ArticleClien
   const [wikiContexts, setWikiContexts] = useState<WikiContext[]>([]);
   const [category, setCategory] = useState<string>("World");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [loadingSteps, setLoadingSteps] = useState<{ text: string; status: "pending" | "done" | "idle" }[]>([
-    { text: "Ingesting wire feeds...", status: "idle" },
-    { text: "Cross-referencing global desks...", status: "idle" },
-    { text: "Compiling Editorial Memo...", status: "idle" }
-  ]);
 
   useEffect(() => {
     setMounted(true);
@@ -81,30 +76,6 @@ export default function ArticleClient({ article, serializedNotes }: ArticleClien
 
     const detectedCategory = getBriefingCategory(article.title);
 
-    // Reset steps dynamically
-    setLoadingSteps([
-      { text: "Ingesting wire feeds...", status: "pending" },
-      { text: "Cross-referencing global desks...", status: "idle" },
-      { text: "Compiling Editorial Memo...", status: "idle" }
-    ]);
-
-    // Simulating progressive terminal updates
-    const timer1 = setTimeout(() => {
-      setLoadingSteps(prev => [
-        { ...prev[0], status: "done" },
-        { ...prev[1], status: "pending" },
-        { ...prev[2], status: "idle" }
-      ]);
-    }, 850);
-
-    const timer2 = setTimeout(() => {
-      setLoadingSteps(prev => [
-        { ...prev[0], status: "done" },
-        { ...prev[1], status: "done" },
-        { ...prev[2], status: "pending" }
-      ]);
-    }, 1700);
-
     try {
       const compilePromise = compileBriefing(article.id);
 
@@ -115,8 +86,8 @@ export default function ArticleClient({ article, serializedNotes }: ArticleClien
       ]);
 
       const res = compileRes as any;
-      if (res.success && res.briefing) {
-        setAnalysisData(res.briefing);
+      if (res.success && (res.articleText || res.briefing)) {
+        setAnalysisData(res.articleText || res.briefing);
         setWikiContexts(res.wikiContexts || []);
         setCategory(res.category || detectedCategory);
         setVerificationState("verified");
@@ -128,9 +99,6 @@ export default function ArticleClient({ article, serializedNotes }: ArticleClien
       console.error(e);
       setErrorMsg(e.message || "Failed to execute claim verification.");
       setVerificationState("error");
-    } finally {
-      clearTimeout(timer1);
-      clearTimeout(timer2);
     }
   };
 
@@ -250,43 +218,23 @@ export default function ArticleClient({ article, serializedNotes }: ArticleClien
           </div>
         )}
 
-        {/* ——— TERMINAL LOADER SECTION ——— */}
+        {/* ——— DRAFTING LOADER SECTION ——— */}
         {verificationState === "loading" && (
-          <div className="space-y-6">
-            <div className="w-full bg-slate-950 border border-slate-800 rounded-xl p-5 font-mono text-xs text-slate-350 shadow-lg space-y-2.5">
-              <div className="flex items-center justify-between border-b border-slate-900 pb-2 text-[10px] text-slate-500 uppercase tracking-widest font-black">
-                <span>TRUTHFEED INTEL CORE v1.0</span>
-                <span className="flex h-2 w-2 rounded-full bg-blue-500 animate-pulse" />
-              </div>
-              <div className="space-y-1.5 pt-1 text-left">
-                {loadingSteps.map((step, idx) => {
-                  if (step.status === "idle") return null;
-                  return (
-                    <div key={idx} className="flex items-center gap-2">
-                      {step.status === "done" ? (
-                        <span className="text-emerald-500 font-bold">[✓]</span>
-                      ) : (
-                        <span className="text-blue-400 font-bold animate-pulse">[⟳]</span>
-                      )}
-                      <span className={step.status === "done" ? "text-slate-400 font-medium" : "text-slate-200 font-bold"}>
-                        {step.text}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
+          <div className="max-w-2xl mx-auto px-4 py-8 space-y-6">
+            <div className="text-xs font-mono uppercase tracking-wider text-slate-400 dark:text-slate-550 flex items-center gap-2">
+              <span className="flex h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulse" />
+              <span>Drafting verified report...</span>
             </div>
-
-            {/* VerificationDossier Skeleton Dashboard */}
-            <VerificationDossier
-              articleId={article.id}
-              articleTitle={article.title}
-              sourceName={article.sourceName}
-              relatedSources={article.relatedSources}
-              briefing={null}
-              wikiContexts={[]}
-              category={getBriefingCategory(article.title)}
-            />
+            <div className="animate-pulse space-y-8">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="space-y-4">
+                  <div className="h-4 bg-slate-200 dark:bg-slate-800 rounded w-full" />
+                  <div className="h-4 bg-slate-200 dark:bg-slate-800 rounded w-11/12" />
+                  <div className="h-4 bg-slate-200 dark:bg-slate-800 rounded w-5/6" />
+                  <div className="h-4 bg-slate-200 dark:bg-slate-800 rounded w-2/3" />
+                </div>
+              ))}
+            </div>
           </div>
         )}
 

@@ -98,5 +98,6 @@ model Analysis {
   briefing     String?
   wikiContexts Json?
   category     String?
+  articleText  String?
   createdAt    DateTime @default(now())
 }
