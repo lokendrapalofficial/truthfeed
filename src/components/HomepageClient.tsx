@@ -456,7 +456,7 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
                                   </span>
                                   
                                   {/* Headline */}
-                                  <h3 className="font-bold text-base text-slate-900 dark:text-slate-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors leading-snug line-clamp-2">
+                                  <h3 className="font-bold text-base text-slate-900 dark:text-slate-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors leading-snug">
                                     {article.title}
                                   </h3>
                                   

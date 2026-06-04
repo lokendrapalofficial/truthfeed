@@ -175,7 +175,7 @@ export default function NewsCard({ article, viewMode = "grid" }: NewsCardProps) 
               />
               {renderAuditBadge()}
             </div>
-            <h3 className="font-bold text-base text-stone-900 dark:text-slate-100 leading-snug line-clamp-2 hover:text-stone-700 dark:hover:text-slate-300 transition-colors">
+            <h3 className="font-bold text-base text-stone-900 dark:text-slate-100 leading-snug hover:text-stone-700 dark:hover:text-slate-300 transition-colors">
               <Link href={`/article/${article.id}`}>
                 {article.title}
               </Link>
@@ -232,7 +232,7 @@ export default function NewsCard({ article, viewMode = "grid" }: NewsCardProps) 
           <span className="text-[10px] font-mono tracking-wider text-slate-500 uppercase mb-1">
             {category}
           </span>
-          <h3 className="font-sans font-bold text-xl text-stone-900 dark:text-slate-100 mb-2 line-clamp-2 hover:text-stone-700 dark:hover:text-slate-350 transition-colors leading-snug">
+          <h3 className="font-sans font-bold text-xl text-stone-900 dark:text-slate-100 mb-2 hover:text-stone-700 dark:hover:text-slate-350 transition-colors leading-snug">
             <Link href={`/article/${article.id}`}>
               {article.title}
             </Link>
