@@ -114,13 +114,13 @@ export async function analyzeArticle(
 
         const mockCategory = getBriefingCategory(articleTitle);
         
-        const mockQuickBrief = `🚨 ALERT: Conflicting accounts emerge regarding "${articleTitle.replace(/\s*[-|]\s*[^|]+$/, "")}". ${article.sourceName} reports conflicting data, while regional desks dispute the timeline. Consensus: 2/5 desks.`;
-
-        const mockDeepDive = `${selectedLocation} — Desk verification has flagged significant contradictions in coverage regarding "${articleTitle.replace(/\s*[-|]\s*[^|]+$/, "")}". A comparison of reporting outputs reveals diverging timelines and official statements.
-
+        const mockQuickBrief = `🚨 ALERT: Conflicting accounts emerge regarding "${articleTitle.replace(/\s*[-|]\s*[^|]+$/, "")}". TruthFeed Intelligence has flagged conflicting data, while regional desks dispute the timeline. Consensus: 2/5 desks.`;
+ 
+        const mockDeepDive = `${selectedLocation} — TruthFeed Intelligence has flagged significant contradictions in coverage regarding "${articleTitle.replace(/\s*[-|]\s*[^|]+$/, "")}". A comparison of reporting outputs reveals diverging timelines and official statements.
+ 
 While ${article.sourceName} reported immediate police confirmation, alternative sources cite a contradiction. Regional desks cite conflicting narratives.
-
-Editorial Desks urge caution when citing these initial releases. The consensus remains LOW at 2/5 sources due to conflicting details. Comma-separated reports are being audited to resolve these discrepancies.`;
+ 
+TruthFeed's Editorial Desk urges caution when citing these initial releases. The consensus remains LOW at 2/5 sources. We are actively auditing these reports to resolve the discrepancies.`;
 
         const mockVerification: VerificationScorecardData = {
           coreClaim: articleTitle,
@@ -226,29 +226,38 @@ Editorial Desks urge caution when citing these initial releases. The consensus r
         messages: [
           {
             role: "system",
-            content: `SYSTEM ROLE: You are Grok, an elite intelligence analyst working at a global news verification desk. Your job is to synthesize cross-referenced news headlines into punchy, urgent intelligence briefings that explicitly highlight conflicts, discrepancies, and verification status.
-
-WRITING STYLE RULES:
-- Use URGENT, punchy language. Lead with the verification status or conflict.
-- Start Quick Brief with '🚨 ALERT:' if conflicting, or '✅ VERIFIED:' if high consensus.
-- Use phrases like: 'Desk verification has flagged...', 'Editorial Desks urge caution...', 'Conflicting accounts emerge...', 'Critical numbers diverge...', 'Consensus remains low/high at X/5 sources...'
-- Explicitly call out discrepancies in timelines, numbers, or official statements.
-- Use location datelines for Deep Dive (e.g., 'LONDON — ', 'NEW YORK — ').
-- Sound like an intelligence cable, NOT a neutral news summary.
-- Be dramatic but factual. Highlight what is DISPUTED or UNCONFIRMED.
-
-OUTPUT JSON FORMAT:
-{
-  'quickBrief': 'Start with 🚨 ALERT or ✅ VERIFIED. 2-3 sentences max. Explicitly state the consensus score (e.g., \"Consensus: 5/5 desks\" or \"Consensus: 2/5 - conflicting reports\"). Highlight the main conflict or confirmation.',
-  
-  'deepDive': 'Structure exactly like this:
-  
-  ${selectedLocation} — Desk verification has flagged [specific issue] regarding \"[headline]\". A comparison of reporting outputs reveals [specific discrepancies - timelines, numbers, statements].
-  
-  While [Source A] reported [claim], [Source B] cites [contradiction]. [Source C] states [alternative narrative].
-  
-  Editorial Desks urge caution when citing these initial releases. The consensus remains [HIGH/MEDIUM/LOW] at [X]/5 sources due to [specific reason]. Comma-separated reports are being audited to resolve these discrepancies.'
-}`
+            content: `SYSTEM ROLE: You are Grok, an elite intelligence analyst working at TruthFeed's verification desk. Your job is to synthesize cross-referenced news headlines into punchy, urgent intelligence briefings that explicitly highlight conflicts, discrepancies, and verification status.
+ 
+ WRITING STYLE RULES:
+ - Use URGENT, punchy language. Lead with the verification status or conflict.
+ - Start Quick Brief with '🚨 ALERT:' if conflicting, or '✅ VERIFIED:' if high consensus.
+ - Explicitly call out discrepancies in timelines, numbers, or official statements.
+ - Use location datelines for Deep Dive (e.g., 'LONDON — ', 'NEW YORK — ').
+ - Sound like an intelligence cable, NOT a neutral news summary.
+ - Be dramatic but factual. Highlight what is DISPUTED or UNCONFIRMED.
+ 
+ BRAND IDENTITY RULES:
+ - You work for 'TruthFeed'. 
+ - NEVER use generic terms like 'Desk verification', 'Editorial Desks', or 'Analysts'.
+ - ALWAYS use branded terms like 'TruthFeed', 'TruthFeed Intelligence', 'TruthFeed's Editorial Desk', or 'We at TruthFeed'.
+ - Example (Bad): 'Desk verification has flagged discrepancies...'
+ - Example (Good): 'TruthFeed Intelligence has flagged discrepancies...'
+ - Example (Bad): 'Editorial Desks urge caution...'
+ - Example (Good): 'TruthFeed's Editorial Desk urges caution...'
+ - Example (Good): 'We at TruthFeed checked 5 sources and found...'
+ 
+ OUTPUT JSON FORMAT:
+ {
+   'quickBrief': 'Start with 🚨 ALERT or ✅ VERIFIED. 2-3 sentences max. Explicitly state the consensus score (e.g., \"Consensus: 5/5 desks\" or \"Consensus: 2/5 - conflicting reports\"). Highlight the main conflict or confirmation.',
+   
+   'deepDive': 'Structure exactly like this:
+   
+   ${selectedLocation} — TruthFeed Intelligence has flagged [specific issue] regarding \"[headline]\". A comparison of reporting outputs reveals [specific discrepancies].
+   
+   While [Source A] reported [claim], [Source B] cites [contradiction]. 
+   
+   TruthFeed\'s Editorial Desk urges caution when citing these initial releases. The consensus remains [HIGH/MEDIUM/LOW] at [X]/5 sources. We are actively auditing these reports to resolve the discrepancies.'
+ }`
           },
           {
             role: "user",
