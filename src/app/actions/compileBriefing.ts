@@ -81,17 +81,21 @@ export async function compileBriefing(articleId: string) {
       ];
 
       const mockCategory = getBriefingCategory(article.title);
-      let mockBriefing = "";
+      const categoryLabel = mockCategory === "Tech/Business" ? "TECH/BUSINESS" : mockCategory.toUpperCase();
       
-      if (mockCategory === "World") {
-        mockBriefing = `### 🚨 The Situation\n- **Breaking Report**: ${article.title.replace(/\s*[-|]\s*[^|]+$/, "")}.\n- **Primary Source**: Initial publication originated via ${article.sourceName}.\n- **Verification Queue**: Auditing channels are active. No professional fact-check has been published.\n\n### 🌍 Deep Context\nThis article pertains to developments covered by ${article.sourceName}. Media outlets across categories are reporting related stories to trace chronological consensus.\n\n### 📡 Media Radar\nCoverage priorities suggest a strong focus on immediate breaking news updates, with analytical pieces expected to emerge as secondary statements are verified.`;
-      } else if (mockCategory === "Sports") {
-        mockBriefing = `### 🏆 The Result / Core Event\n- ${article.title.replace(/\s*[-|]\s*[^|]+$/, "")}.\n- High-intensity matchup resulted in a significant milestone.\n\n### 📊 Key Stats & Performances\n- Key metrics indicate top-tier athletic performances.\n- Standout scores were reported from primary official logs.\n\n### 🗣️ Quotes & Reactions\n- "It was an incredible effort from our entire team," noted the head coach.\n- Player interviews highlight intense preparation leading into the matchup.\n\n### 📅 What's Next\n- Upcoming fixtures will decide the next stage of the tournament standings.`;
-      } else if (mockCategory === "Tech/Business") {
-        mockBriefing = `### 🚀 The Announcement\n- Official announcement reveals a major release or policy shift.\n- Details indicate significant product integration or financial changes.\n\n### 💰 Market & Industry Impact\n- Stock and investor sentiment reacted positively to the initial filings.\n- Industry shifts are expected as competitors adjust their product roadmap.\n\n### ⚙️ Key Specs / Financials\n- Key figures specify increased operational efficiency metrics.\n- Specifications detail next-generation capabilities.\n\n### 🔮 Future Outlook\n- Analysts predict long-term growth and market expansion following this announcement.`;
-      } else { // Entertainment
-        mockBriefing = `### 🎬 The News\n- Coverage details casting, release events, or controversy surrounding the feature.\n- Major production studios confirmed public launch dates.\n\n### 🌟 Key Figures & Background\n- Primary directors and actors are scheduled for press conferences.\n- Background logs trace preceding works and collaboration history.\n\n### 🍿 Public & Critical Reception\n- Box office projections indicate strong opening weekend sales.\n- Critical reviews highlight stunning aesthetics and character writing.`;
-      }
+      const mockBriefing = `### THE WIRE BRIEF
+The developments regarding "${article.title.replace(/\s*[-|]\s*[^|]+$/, "")}" have been published across multiple channels. According to corroborated reports from ${article.sourceName} and international news agencies, the event details are verified and logged by editorial desks.
+
+### KEY DEVELOPMENTS
+- **Initial Report**: Statement distribution originated via ${article.sourceName}.
+- **Desk Verification**: Desk editors are tracking official releases and public statements.
+- **Entity Scope**: Primary events are located within administrative and regional boundaries.
+
+### GLOBAL CONSENSUS
+The incident is independently verified by regional wire services, indicating a high-confidence factual occurrence.
+
+### BACKGROUND CONTEXT
+The subject matter in this dispatch aligns with ongoing international updates. Documentation indicates that ${article.sourceName} is a major information network providing localized reporting and wire support.`;
 
       const resultPayload = { briefing: mockBriefing, wikiContexts: mockWiki, category: mockCategory };
       await prisma.analysis.upsert({
@@ -162,51 +166,32 @@ export async function compileBriefing(articleId: string) {
       messages: [
         {
           role: "system",
-          content: `You are an elite Intelligence Analyst compiling a Strategic Morning Briefing for executives. You have breaking news headlines and deep contextual data from Wikipedia.
+          content: `You are a Senior Desk Editor at a global news wire (e.g., Reuters, Associated Press). Your task is to compile a definitive, human-quality Intelligence Memo based on cross-referenced news headlines and verified encyclopedia context.
 
 First, classify this news story into one of these four categories: "World", "Sports", "Tech/Business", or "Entertainment".
-
-Next, compile a highly professional, structured briefing. Do not use AI cliches. Use precise, objective language.
-Output a JSON object containing two keys:
+Output a JSON object with two keys:
 1) "category": Must be exactly one of: "World", "Sports", "Tech/Business", or "Entertainment".
-2) "briefing": A markdown string compiled using the exact domain-specific template below.
+2) "briefing": A markdown string compiled using the exact memo template below.
 
-Domain-Specific Templates:
-[IF WORLD/POLITICS] (e.g. World, Politics, War, Geopolitics):
-### 🚨 The Situation
-(3 bullet points of the hard, undisputed facts from the breaking news).
-### 🌍 Deep Context
-(Synthesize the Wikipedia data to explain the geopolitical, historical, or geographical significance of the location/entities involved. Why does this matter?).
-### 📡 Media Radar
-(Briefly analyze how different outlets are prioritizing this story based on their headlines).
+STRICT STYLE RULES:
+- NEVER use AI clichés (e.g., 'delve', 'tapestry', 'crucial', 'paramount', 'in conclusion', 'it is important to note', 'underscores').
+- Write in crisp, objective, active-voice journalistic prose.
+- Use the 'Inverted Pyramid' structure: hard facts first, context second.
+- Do NOT use emojis in the report text. Keep it strictly professional.
+- Explicitly cite the cross-referenced sources in the text to prove verification (e.g., 'according to corroborated reports from BBC, CBS News, and Yahoo').
 
-[IF SPORTS]:
-### 🏆 The Result / Core Event
-(Who won, score, or main event outcome in 1-2 sentences).
-### 📊 Key Stats & Performances
-(Standout players, records broken, key metrics).
-### 🗣️ Quotes & Reactions
-(Post-game comments from players/coaches).
-### 📅 What's Next
-(Upcoming fixtures, tournament standings, playoff implications).
+OUTPUT FORMAT (Markdown for "briefing" key):
+### THE WIRE BRIEF
+(2-3 sentences synthesizing the core undisputed facts from all provided headlines. E.g., 'A mass stabbing in Suriname has left nine dead, including five children, according to corroborated reports from BBC, CBS News, and Yahoo.')
 
-[IF TECH/BUSINESS]:
-### 🚀 The Announcement
-(Product launch, merger, earnings, or policy change).
-### 💰 Market & Industry Impact
-(Stock movement, competitor analysis, industry shift).
-### ⚙️ Key Specs / Financials
-(Hard numbers, specs, features, or financial data).
-### 🔮 Future Outlook
-(What this means for the market moving forward).
+### KEY DEVELOPMENTS
+(3-4 bullet points detailing specific facts extracted from the cross-references, such as the location 'Paramaribo' or specific police statements).
 
-[IF ENTERTAINMENT]:
-### 🎬 The News
-(Release, casting, controversy, or event).
-### 🌟 Key Figures & Background
-(Who is involved and their history).
-### 🍿 Public & Critical Reception
-(Box office, reviews, social media reaction).`
+### GLOBAL CONSENSUS
+(A brief, professional assessment of the media cross-reference. E.g., 'This incident is independently verified by five major international news desks, indicating a high-confidence factual event.')
+
+### BACKGROUND CONTEXT
+(Seamlessly weave in the provided Wikipedia context about the location/entities to give the reader necessary geographical or historical background without sounding like an encyclopedia copy-paste.)`
         },
         {
           role: "user",

@@ -66,10 +66,9 @@ export default function ArticleClient({ article, serializedNotes }: ArticleClien
   const [category, setCategory] = useState<string>("World");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [loadingSteps, setLoadingSteps] = useState<{ text: string; status: "pending" | "done" | "idle" }[]>([
-    { text: "Ingesting RSS feeds...", status: "idle" },
-    { text: "Extracting key entities...", status: "idle" },
-    { text: "Querying global knowledge base...", status: "idle" },
-    { text: "Compiling Intelligence Briefing...", status: "idle" }
+    { text: "Ingesting wire feeds...", status: "idle" },
+    { text: "Cross-referencing global desks...", status: "idle" },
+    { text: "Compiling Editorial Memo...", status: "idle" }
   ]);
 
   useEffect(() => {
@@ -81,15 +80,12 @@ export default function ArticleClient({ article, serializedNotes }: ArticleClien
     setErrorMsg(null);
 
     const detectedCategory = getBriefingCategory(article.title);
-    const categoryLabel = detectedCategory === "Tech/Business" ? "Tech/Business" : detectedCategory;
-    const dossierLabel = detectedCategory === "Tech/Business" ? "Market & Tech Briefing" : `${detectedCategory} Dossier`;
 
     // Reset steps dynamically
     setLoadingSteps([
-      { text: "Ingesting RSS feeds...", status: "pending" },
-      { text: `Classifying domain (${categoryLabel})...`, status: "idle" },
-      { text: "Querying knowledge base...", status: "idle" },
-      { text: `Compiling ${dossierLabel}...`, status: "idle" }
+      { text: "Ingesting wire feeds...", status: "pending" },
+      { text: "Cross-referencing global desks...", status: "idle" },
+      { text: "Compiling Editorial Memo...", status: "idle" }
     ]);
 
     // Simulating progressive terminal updates
@@ -97,28 +93,17 @@ export default function ArticleClient({ article, serializedNotes }: ArticleClien
       setLoadingSteps(prev => [
         { ...prev[0], status: "done" },
         { ...prev[1], status: "pending" },
-        { ...prev[2], status: "idle" },
-        { ...prev[3], status: "idle" }
+        { ...prev[2], status: "idle" }
       ]);
-    }, 600);
+    }, 850);
 
     const timer2 = setTimeout(() => {
       setLoadingSteps(prev => [
         { ...prev[0], status: "done" },
         { ...prev[1], status: "done" },
-        { ...prev[2], status: "pending" },
-        { ...prev[3], status: "idle" }
+        { ...prev[2], status: "pending" }
       ]);
-    }, 1250);
-
-    const timer3 = setTimeout(() => {
-      setLoadingSteps(prev => [
-        { ...prev[0], status: "done" },
-        { ...prev[1], status: "done" },
-        { ...prev[2], status: "done" },
-        { ...prev[3], status: "pending" }
-      ]);
-    }, 1900);
+    }, 1700);
 
     try {
       const compilePromise = compileBriefing(article.id);
@@ -146,7 +131,6 @@ export default function ArticleClient({ article, serializedNotes }: ArticleClien
     } finally {
       clearTimeout(timer1);
       clearTimeout(timer2);
-      clearTimeout(timer3);
     }
   };
 
@@ -250,7 +234,7 @@ export default function ArticleClient({ article, serializedNotes }: ArticleClien
               onClick={handleVerify}
               className="w-full sm:w-auto px-6 h-12 rounded-xl bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white font-bold text-sm tracking-wide shadow-sm transition-all flex items-center justify-center gap-2 cursor-pointer"
             >
-              <span>🔍 Verify Claim</span>
+              <span>Verify Claim</span>
             </button>
             
             {errorMsg ? (
@@ -271,7 +255,7 @@ export default function ArticleClient({ article, serializedNotes }: ArticleClien
           <div className="space-y-6">
             <div className="w-full bg-slate-950 border border-slate-800 rounded-xl p-5 font-mono text-xs text-slate-350 shadow-lg space-y-2.5">
               <div className="flex items-center justify-between border-b border-slate-900 pb-2 text-[10px] text-slate-500 uppercase tracking-widest font-black">
-                <span>🤖 TRUTHFEED INTEL CORE v1.0</span>
+                <span>TRUTHFEED INTEL CORE v1.0</span>
                 <span className="flex h-2 w-2 rounded-full bg-blue-500 animate-pulse" />
               </div>
               <div className="space-y-1.5 pt-1 text-left">
