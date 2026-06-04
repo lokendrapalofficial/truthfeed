@@ -66,20 +66,18 @@ export default function ArticleAnalysis({
       {/* Brief */}
       <div className="space-y-1">
         <h5 className="text-[9px] uppercase font-bold tracking-wider text-stone-400">The Brief</h5>
-        <p className="text-xs leading-relaxed text-stone-700 font-sans font-medium">{analysis.brief}</p>
+        <p className="text-xs leading-relaxed text-stone-700 font-sans font-medium">{analysis.evidence}</p>
       </div>
 
       {/* Claims */}
-      {analysis.claims && analysis.claims.length > 0 && (
+      {analysis.claim && (
         <div className="space-y-1.5">
           <h5 className="text-[9px] uppercase font-bold tracking-wider text-stone-400">Key Claims</h5>
           <ul className="space-y-2">
-            {analysis.claims.map((claim, index) => (
-              <li key={index} className="flex items-start gap-1.5 text-xs text-stone-700">
-                <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-blue-400 shrink-0" />
-                <span className="leading-relaxed font-medium">{claim}</span>
-              </li>
-            ))}
+            <li className="flex items-start gap-1.5 text-xs text-stone-700">
+              <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-blue-400 shrink-0" />
+              <span className="leading-relaxed font-medium">{analysis.claim}</span>
+            </li>
           </ul>
         </div>
       )}

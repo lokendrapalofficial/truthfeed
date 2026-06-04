@@ -4,8 +4,9 @@ import { prisma } from "@/lib/db";
 import { genAI, geminiModel } from "@/lib/gemini";
 
 export interface GeminiAnalysisResult {
-  brief: string;
-  claims: string[];
+  claim: string;
+  verdict: string;
+  evidence: string;
 }
 
 export async function analyzeArticle(articleId: string) {
@@ -27,12 +28,9 @@ export async function analyzeArticle(articleId: string) {
       await new Promise((resolve) => setTimeout(resolve, 1200));
 
       const mockResult: GeminiAnalysisResult = {
-        brief: `${article.sourceName} reports on "${article.title.substring(0, 60)}...". The story covers developments of significance to readers following this topic.`,
-        claims: [
-          `The article originates from ${article.sourceName || "the specified publisher"}.`,
-          `Published on ${new Date(article.publishedAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}.`,
-          `Headline summary: "${article.title.substring(0, 55)}..."`,
-        ],
+        claim: article.title,
+        verdict: "Unverified",
+        evidence: `Published by ${article.sourceName || "the publisher"} on ${new Date(article.publishedAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}. Gemini AI analysis is currently offline.`,
       };
 
       return { success: true, analysis: mockResult, isMock: true };
@@ -46,16 +44,23 @@ export async function analyzeArticle(articleId: string) {
       },
     });
 
-    const prompt = `You are a concise, objective fact-checking assistant. Analyze the following news headline and summary.
+    const prompt = `You are a Lead Product Designer, Frontend Architect, and a highly precise, objective fact-checking AI.
+Analyze the following news headline and summary.
 
-Your task:
-1) Write a BRIEF: a maximum of TWO sentences that neutrally summarize what happened. No editorializing, no bias.
-2) Extract KEY CLAIMS: up to THREE specific, verifiable factual claims made in the article. Each claim should be a single, short sentence.
+Your tasks:
+1) Extract "claim": The main factual assertion made in the article headline or description.
+2) Determine "verdict": Classify the claim strictly as one of the following: "True", "False", "Misleading", or "Unverified".
+3) Provide "evidence": Exactly 1 to 2 sentences of objective context explaining what we found regarding this claim. Be neutral, precise, and fact-based.
+
+CRITICAL RULES:
+- Do NOT write generic summaries, bias analysis, or perspectives.
+- Strictly output valid JSON matching the exact structure below.
 
 Return ONLY valid JSON in this exact structure:
 {
-  "brief": "Two sentence maximum neutral summary.",
-  "claims": ["Specific verifiable claim 1.", "Specific verifiable claim 2.", "Specific verifiable claim 3."]
+  "claim": "string (the main factual assertion)",
+  "verdict": "string (True, False, Misleading, or Unverified)",
+  "evidence": "string (max 2 sentences of objective context)"
 }
 
 ---
@@ -85,12 +90,9 @@ Summary: "${article.summary || article.content}"`;
         console.warn("Resilience Trigger: Switched to offline mock fallback due to Gemini API limits.");
 
         const mockResult: GeminiAnalysisResult = {
-          brief: `${article.sourceName} has published a report on "${article.title.substring(0, 60)}...". The Gemini AI briefing service is temporarily unavailable — please check back shortly.`,
-          claims: [
-            `The article originates from ${article.sourceName || "the specified publisher"}.`,
-            `Published on ${new Date(article.publishedAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}.`,
-            `Headline: "${article.title.substring(0, 55)}..."`,
-          ],
+          claim: article.title,
+          verdict: "Unverified",
+          evidence: `The article is reported by ${article.sourceName || "the specified publisher"}. Gemini AI briefing service is temporarily unavailable.`,
         };
 
         return { success: true, analysis: mockResult, isMock: true, rateLimitHit: true };

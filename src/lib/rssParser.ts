@@ -52,3 +52,42 @@ export function parseRelatedArticles(html: string): RelatedSource[] {
 
   return related;
 }
+
+/**
+ * Safely parses the Google News RSS HTML <description> list, extracts the publisher names
+ * from <font> tags, and returns them as a unique list, excluding the main publisher name.
+ */
+export function parseAlsoReportedPublishers(html: string, mainPublisher?: string): string[] {
+  if (!html || typeof html !== "string") return [];
+
+  const matches = html.match(/<font[^>]*>(.*?)<\/font>/gi);
+  if (!matches) return [];
+
+  const publishersSet = new Set<string>();
+  const mainPubLower = mainPublisher?.toLowerCase().trim();
+
+  for (const match of matches) {
+    // Extract the inner text of the font tag
+    const fontText = match.replace(/<[^>]*>/g, "");
+    
+    // Decode HTML entities
+    const decoded = fontText
+      .replace(/&nbsp;/g, " ")
+      .replace(/&amp;/g, "&")
+      .replace(/&quot;/g, '"')
+      .replace(/&apos;/g, "'")
+      .replace(/&#39;/g, "'")
+      .trim();
+
+    if (decoded && decoded !== "Google News") {
+      // If a main publisher is provided, exclude it from "Also reported by"
+      if (mainPubLower && decoded.toLowerCase().trim() === mainPubLower) {
+        continue;
+      }
+      publishersSet.add(decoded);
+    }
+  }
+
+  return Array.from(publishersSet);
+}
+

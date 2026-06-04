@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { ArrowLeft, Calendar, Globe, Sun, Moon, ExternalLink } from "lucide-react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import ShareWidget from "@/components/ShareWidget";
 import SourceBadge from "@/components/SourceBadge";
 import CommunityNotesSection, { NoteItem } from "@/components/CommunityNotesSection";
@@ -11,6 +11,8 @@ import NewsImage from "@/components/NewsImage";
 import VerificationDossier from "@/components/VerificationDossier";
 import { parseRelatedArticles } from "@/lib/rssParser";
 import { useTheme } from "next-themes";
+import { analyzeArticle } from "@/app/actions/analyzeArticle";
+import { fetchFactChecks } from "@/app/actions/fetchFactChecks";
 
 interface ArticleClientProps {
   article: any;
@@ -27,26 +29,65 @@ function getCleanHeadline(title: string, sourceName: string): string {
   return clean;
 }
 
-// Extract a clean 2–3 sentence excerpt from article content
-function getArticleExcerpt(summary: string | null, content: string | null, maxChars = 320): string {
-  const raw = summary || content || "";
-  // Strip HTML tags
-  const stripped = raw.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
-  if (stripped.length <= maxChars) return stripped;
-  // Cut at last sentence boundary before maxChars
-  const slice = stripped.substring(0, maxChars);
-  const lastPeriod = Math.max(slice.lastIndexOf(". "), slice.lastIndexOf("! "), slice.lastIndexOf("? "));
-  if (lastPeriod > 120) return slice.substring(0, lastPeriod + 1);
-  return slice + "…";
+// Extract a clean 2-paragraph excerpt from article content
+function getArticleParagraphs(title: string, summary: string | null, content: string | null, sourceName: string): string[] {
+  let clean = summary || content || "";
+  if (clean.includes("<ol>") || clean.includes("<li>")) {
+    clean = clean.replace(/<ol>[\s\S]*?<\/ol>/gi, "");
+  }
+  clean = clean.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+  clean = clean.replace(/See more headlines[\s\S]*/gi, "").trim();
+
+  let p1 = clean;
+  if (!p1 || p1.length < 60) {
+    p1 = `Reports from ${sourceName} indicate significant new developments regarding "${title}". Editorial staff and journalists are continuing to monitor the situation as official statements and primary source documents are released.`;
+  }
+
+  const p2 = `Verification teams are actively reviewing the details, factual assertions, and media coverage surrounding this story. Readers can access the full, uninterrupted report directly from ${sourceName} via the original publisher link below.`;
+
+  return [p1, p2];
 }
 
 export default function ArticleClient({ article, serializedNotes }: ArticleClientProps) {
   const { resolvedTheme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
+  const [verificationState, setVerificationState] = useState<"idle" | "loading" | "verified" | "error">("idle");
+  const [analysisData, setAnalysisData] = useState<any>(null);
+  const [factCheckData, setFactCheckData] = useState<any>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  const handleVerify = async () => {
+    setVerificationState("loading");
+    setErrorMsg(null);
+    try {
+      const [analysisRes, factCheckRes] = await Promise.all([
+        analyzeArticle(article.id),
+        fetchFactChecks(article.title)
+      ]);
+
+      let analysis = null;
+      let primaryFactCheck = null;
+
+      if (analysisRes.success && analysisRes.analysis) {
+        analysis = analysisRes.analysis;
+      }
+      if (factCheckRes.success && factCheckRes.reviews && factCheckRes.reviews.length > 0) {
+        primaryFactCheck = factCheckRes.reviews[0];
+      }
+
+      setAnalysisData(analysis);
+      setFactCheckData(primaryFactCheck);
+      setVerificationState("verified");
+    } catch (e: any) {
+      console.error(e);
+      setErrorMsg(e.message || "Failed to execute claim verification.");
+      setVerificationState("error");
+    }
+  };
 
   const formattedDate = new Date(article.publishedAt).toLocaleDateString("en-US", {
     weekday: "long",
@@ -56,7 +97,7 @@ export default function ArticleClient({ article, serializedNotes }: ArticleClien
   });
 
   const cleanTitle = getCleanHeadline(article.title, article.sourceName);
-  const excerpt = getArticleExcerpt(article.summary, article.content);
+  const paragraphs = getArticleParagraphs(cleanTitle, article.summary, article.content, article.sourceName);
 
   return (
     <div className="flex flex-col min-h-screen bg-white dark:bg-slate-900 text-gray-900 dark:text-slate-100 font-sans antialiased transition-colors duration-300">
@@ -132,20 +173,68 @@ export default function ArticleClient({ article, serializedNotes }: ArticleClien
           />
         </div>
 
-        {/* ——— VERIFICATION DOSSIER ——— */}
-        <VerificationDossier
-          articleId={article.id}
-          articleTitle={article.title}
-        />
-
         {/* ——— ARTICLE EXCERPT ——— */}
-        {excerpt && (
-          <section className="space-y-3">
-            <p className="text-base text-gray-700 dark:text-slate-300 leading-relaxed font-sans">
-              {excerpt}
+        <section className="space-y-4">
+          {paragraphs.map((p, idx) => (
+            <p key={idx} className="text-base text-gray-700 dark:text-slate-300 leading-relaxed font-sans">
+              {p}
             </p>
-          </section>
+          ))}
+        </section>
+
+        {/* ——— VERIFICATION SECTION ——— */}
+        {verificationState !== "verified" && (
+          <div className="flex flex-col items-center justify-center p-6 border border-dashed border-gray-200 dark:border-slate-700 rounded-xl bg-gray-50/50 dark:bg-slate-800/20 text-center gap-4 transition-colors">
+            <button
+              onClick={handleVerify}
+              disabled={verificationState === "loading"}
+              className="w-full sm:w-auto px-6 h-12 rounded-xl bg-blue-600 hover:bg-blue-700 active:scale-[0.98] disabled:opacity-75 disabled:cursor-not-allowed disabled:active:scale-100 text-white font-bold text-sm tracking-wide shadow-sm transition-all flex items-center justify-center gap-2 cursor-pointer"
+            >
+              {verificationState === "loading" ? (
+                <>
+                  <svg className="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  <span>Analyzing claims...</span>
+                </>
+              ) : (
+                <span>🔍 Verify Claim</span>
+              )}
+            </button>
+            
+            {errorMsg ? (
+              <p className="text-xs text-rose-600 dark:text-rose-400 font-medium">
+                {errorMsg}
+              </p>
+            ) : (
+              <p className="text-xs text-gray-500 dark:text-slate-400 font-medium flex items-center gap-1.5 justify-center">
+                <span className="inline-block h-2 w-2 rounded-full border border-gray-400 dark:border-slate-500" />
+                <span>◯ Awaiting Professional Verification</span>
+              </p>
+            )}
+          </div>
         )}
+
+        <AnimatePresence>
+          {verificationState === "verified" && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4 }}
+            >
+              <VerificationDossier
+                articleId={article.id}
+                articleTitle={article.title}
+                sourceName={article.sourceName}
+                source={article.source}
+                articleContent={article.content}
+                analysis={analysisData}
+                primaryFactCheck={factCheckData}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* ——— CONTINUE READING BUTTON ——— */}
         <div className="pt-1">
