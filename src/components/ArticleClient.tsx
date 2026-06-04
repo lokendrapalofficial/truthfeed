@@ -11,7 +11,7 @@ import NewsImage from "@/components/NewsImage";
 import VerificationDossier from "@/components/VerificationDossier";
 import { parseRelatedArticles } from "@/lib/rssParser";
 import { useTheme } from "next-themes";
-import { compileBriefing } from "@/app/actions/compileBriefing";
+import { analyzeArticle } from "@/app/actions/analyzeArticle";
 import { WikiContext } from "@/lib/wiki";
 
 function getBriefingCategory(title: string): string {
@@ -60,15 +60,11 @@ function getArticleParagraphs(title: string, summary: string | null, content: st
 export default function ArticleClient({ article, serializedNotes }: ArticleClientProps) {
   const { resolvedTheme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
-  const [verificationState, setVerificationState] = useState<"idle" | "loading" | "verified" | "error">("idle");
+  const [verificationState, setVerificationState] = useState<"loading" | "verified" | "error">("loading");
   const [analysisData, setAnalysisData] = useState<string | null>(null);
   const [wikiContexts, setWikiContexts] = useState<WikiContext[]>([]);
   const [category, setCategory] = useState<string>("World");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   const handleVerify = async () => {
     setVerificationState("loading");
@@ -77,15 +73,13 @@ export default function ArticleClient({ article, serializedNotes }: ArticleClien
     const detectedCategory = getBriefingCategory(article.title);
 
     try {
-      const compilePromise = compileBriefing(article.id);
+      const res = (await analyzeArticle(
+        article.id,
+        article.title,
+        article.summary || article.content || undefined,
+        article.relatedSources
+      )) as any;
 
-      // Concurrently run backend compilation and ensure at least 2.5s display for visual flow
-      const [compileRes] = await Promise.all([
-        compilePromise,
-        new Promise(resolve => setTimeout(resolve, 2500))
-      ]);
-
-      const res = compileRes as any;
       if (res.success && (res.articleText || res.briefing)) {
         setAnalysisData(res.articleText || res.briefing);
         setWikiContexts(res.wikiContexts || []);
@@ -101,6 +95,11 @@ export default function ArticleClient({ article, serializedNotes }: ArticleClien
       setVerificationState("error");
     }
   };
+
+  useEffect(() => {
+    setMounted(true);
+    handleVerify();
+  }, []);
 
   const formattedDate = new Date(article.publishedAt).toLocaleDateString("en-US", {
     weekday: "long",
@@ -195,45 +194,47 @@ export default function ArticleClient({ article, serializedNotes }: ArticleClien
           ))}
         </section>
 
-        {/* ——— VERIFICATION SECTION ——— */}
-        {(verificationState === "idle" || verificationState === "error") && (
-          <div className="flex flex-col items-center justify-center p-6 border border-dashed border-gray-200 dark:border-slate-700 rounded-xl bg-gray-50/50 dark:bg-slate-800/20 text-center gap-4 transition-colors">
+        {/* ——— ERROR SECTION ——— */}
+        {verificationState === "error" && (
+          <div className="flex flex-col items-center justify-center p-6 border border-dashed border-rose-200 dark:border-rose-800 rounded-xl bg-rose-50/50 dark:bg-rose-950/10 text-center gap-4 transition-colors">
+            <p className="text-xs text-rose-600 dark:text-rose-450 font-medium">
+              {errorMsg || "Briefing compilation failed."}
+            </p>
             <button
               onClick={handleVerify}
-              className="w-full sm:w-auto px-6 h-12 rounded-xl bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white font-bold text-sm tracking-wide shadow-sm transition-all flex items-center justify-center gap-2 cursor-pointer"
+              className="px-4 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-gray-700 dark:text-slate-350 text-xs font-semibold active:scale-[0.98] transition-all cursor-pointer"
             >
-              <span>Verify Claim</span>
+              Retry Compilation
             </button>
-            
-            {errorMsg ? (
-              <p className="text-xs text-rose-600 dark:text-rose-400 font-medium">
-                {errorMsg}
-              </p>
-            ) : (
-              <p className="text-xs text-gray-500 dark:text-slate-400 font-medium flex items-center gap-1.5 justify-center">
-                <span className="inline-block h-2 w-2 rounded-full border border-gray-400 dark:border-slate-500" />
-                <span>◯ Awaiting Professional Verification</span>
-              </p>
-            )}
           </div>
         )}
 
         {/* ——— DRAFTING LOADER SECTION ——— */}
         {verificationState === "loading" && (
           <div className="max-w-2xl mx-auto px-4 py-8 space-y-6">
-            <div className="text-xs font-mono uppercase tracking-wider text-slate-400 dark:text-slate-550 flex items-center gap-2">
+            <div className="text-xs font-mono uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center gap-2 select-none">
               <span className="flex h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulse" />
               <span>Drafting verified report...</span>
             </div>
             <div className="animate-pulse space-y-8">
-              {[1, 2, 3].map((i) => (
-                <div key={i} className="space-y-4">
-                  <div className="h-4 bg-slate-200 dark:bg-slate-800 rounded w-full" />
-                  <div className="h-4 bg-slate-200 dark:bg-slate-800 rounded w-11/12" />
-                  <div className="h-4 bg-slate-200 dark:bg-slate-800 rounded w-5/6" />
-                  <div className="h-4 bg-slate-200 dark:bg-slate-800 rounded w-2/3" />
-                </div>
-              ))}
+              {/* Paragraph 1: 3 lines of text */}
+              <div className="space-y-3">
+                <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-full" />
+                <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-11/12" />
+                <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-4/5" />
+              </div>
+              {/* Paragraph 2: 4 lines of text */}
+              <div className="space-y-3">
+                <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-full" />
+                <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-11/12" />
+                <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-5/6" />
+                <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-3/4" />
+              </div>
+              {/* Paragraph 3: 2 lines of text */}
+              <div className="space-y-3">
+                <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-full" />
+                <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-5/6" />
+              </div>
             </div>
           </div>
         )}
@@ -241,9 +242,9 @@ export default function ArticleClient({ article, serializedNotes }: ArticleClien
         <AnimatePresence>
           {verificationState === "verified" && (
             <motion.div
-              initial={{ opacity: 0, y: 20 }}
+              initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.4 }}
+              transition={{ duration: 0.5 }}
             >
               <VerificationDossier
                 articleId={article.id}
