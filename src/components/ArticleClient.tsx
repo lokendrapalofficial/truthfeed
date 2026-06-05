@@ -5,7 +5,7 @@ import Link from "next/link";
 import { ArrowLeft, Calendar, Globe, Sun, Moon, ExternalLink } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import ShareWidget from "@/components/ShareWidget";
-import SourceBadge from "@/components/SourceBadge";
+import { formatSmartDate } from "@/lib/utils";
 import CommunityNotesSection, { NoteItem } from "@/components/CommunityNotesSection";
 import NewsImage from "@/components/NewsImage";
 import VerificationDossier from "@/components/VerificationDossier";
@@ -151,25 +151,33 @@ export default function ArticleClient({ article, serializedNotes }: ArticleClien
       <main className="flex-1 mx-auto max-w-2xl w-full px-4 sm:px-6 py-8 space-y-7">
 
         {/* ——— ARTICLE HEADER ——— */}
-        <header className="space-y-3">
-          {/* Source + Date metadata row */}
-          <div className="flex flex-wrap items-center gap-2.5 text-xs text-gray-500 dark:text-slate-400">
-            <SourceBadge sourceName={article.sourceName} source={article.source} />
-            <span className="text-gray-300 dark:text-slate-600">•</span>
-            <div className="flex items-center gap-1 text-gray-500 dark:text-slate-500">
-              <Calendar className="h-3.5 w-3.5" />
-              <span>{formattedDate}</span>
+        <header className="space-y-4">
+          {/* Meta Row: publisher name + bias pill + credibility pill + timestamp right-aligned */}
+          <div className="flex flex-wrap items-center justify-between gap-4 text-xs">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-extrabold text-slate-900 dark:text-slate-100 text-sm tracking-tight">
+                {article.sourceName}
+              </span>
+              <span className="bg-blue-100 text-blue-800 dark:bg-blue-900/60 dark:text-blue-200 text-[10px] px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wide">
+                {article.source?.bias ? article.source.bias.replace("_", " ").toUpperCase() : "CENTER"}
+              </span>
+              <span className="bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-200 text-[10px] px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wide">
+                {article.source?.credibility ? article.source.credibility.replace("_", " ").toUpperCase() + " CREDIBILITY" : "HIGH CREDIBILITY"}
+              </span>
+            </div>
+            <div className="text-slate-500 dark:text-slate-450 font-mono text-[11px] ml-auto">
+              {formatSmartDate(article.publishedAt).text}
             </div>
           </div>
 
           {/* Headline */}
-          <h1 className="text-3xl font-extrabold leading-tight tracking-tight text-gray-950 dark:text-slate-100">
+          <h1 className="text-3xl md:text-4xl font-serif font-bold leading-tight text-slate-950 dark:text-slate-50 mt-4">
             {cleanTitle}
           </h1>
         </header>
 
         {/* ——— HERO IMAGE ——— */}
-        <div className="aspect-video w-full rounded-xl overflow-hidden bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 shadow-sm relative">
+        <div className="aspect-video w-full rounded-xl overflow-hidden bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 shadow-sm relative mt-6">
           <NewsImage
             url={article.url}
             title={cleanTitle}
@@ -197,6 +205,7 @@ export default function ArticleClient({ article, serializedNotes }: ArticleClien
               <VerificationDossier
                 articleId={article.id}
                 articleTitle={article.title}
+                articleUrl={article.url}
                 sourceName={article.sourceName}
                 relatedSources={article.relatedSources}
                 briefing={analysisData}
@@ -261,28 +270,21 @@ export default function ArticleClient({ article, serializedNotes }: ArticleClien
           </div>
         )}
 
-        {/* ——— CONTINUE READING BUTTON (CTA) ——— */}
-        <div className="pt-1">
-          <a
-            href={article.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="group flex w-full items-center justify-center gap-2.5 h-14 rounded-2xl bg-gray-900 dark:bg-slate-100 hover:bg-gray-800 dark:hover:bg-slate-200 text-white dark:text-slate-900 font-bold text-sm uppercase tracking-wider shadow-md hover:shadow-lg active:scale-[0.98] transition-all duration-200 cursor-pointer"
-          >
-            <Globe className="h-4.5 w-4.5 opacity-70 group-hover:opacity-100 transition-opacity" />
-            <span>Continue Reading on {article.sourceName}</span>
-            <ExternalLink className="h-4 w-4 opacity-50 group-hover:opacity-100 transition-opacity" />
-          </a>
-        </div>
-
         {/* ——— SHARE WIDGET ——— */}
-        <div className="pt-2 border-t border-gray-100 dark:border-slate-800">
+        <div className="pt-2 border-t border-slate-205 dark:border-slate-800">
           <ShareWidget articleTitle={cleanTitle} />
         </div>
 
-        {/* ——— COMMUNITY NOTES ——— */}
+        {/* ——— COMMUNITY NOTES (Collapsible Context) ——— */}
         <section className="pb-16">
-          <CommunityNotesSection articleId={article.id} notes={serializedNotes} />
+          <details className="border border-slate-200 dark:border-slate-800 rounded-xl p-4 mt-6 bg-slate-50/50 dark:bg-slate-900/20 group">
+            <summary className="text-sm font-bold text-slate-500 dark:text-slate-450 hover:text-slate-900 dark:hover:text-slate-100 transition-colors cursor-pointer select-none outline-none">
+              Community Context
+            </summary>
+            <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800">
+              <CommunityNotesSection articleId={article.id} notes={serializedNotes} />
+            </div>
+          </details>
         </section>
 
       </main>
