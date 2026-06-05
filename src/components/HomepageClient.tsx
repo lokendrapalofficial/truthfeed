@@ -2,9 +2,12 @@
 
 import React, { useState, useMemo, useTransition, useEffect, useRef } from "react";
 import Link from "next/link";
-import { Search, RefreshCw, User, LogIn, LogOut, Sun, Moon, LayoutGrid, List } from "lucide-react";
-import { useSession, signIn, signOut } from "next-auth/react";
+import { Search, RefreshCw, Sun, Moon, LayoutGrid, List } from "lucide-react";
+import { createClientComponentClient } from "@/lib/supabase";
 import { useTheme } from "next-themes";
+import { useRouter } from "next/navigation";
+import AuthModal from "@/components/AuthModal";
+import UserMenu from "@/components/UserMenu";
 import { fetchNews } from "@/app/actions/fetchNews";
 import { motion } from "framer-motion";
 import BackToTop from "@/components/BackToTop";
@@ -23,6 +26,8 @@ interface SourceData {
 interface HomepageClientProps {
   initialArticles: any[];
   initialSources: SourceData[];
+  forYouArticles?: any[];
+  userPreferences?: string[];
 }
 
 const CATEGORIES = [
@@ -66,8 +71,32 @@ const isConflicting = (article: any) => {
          article.analysis?.verification?.confidenceLevel === "Low";
 };
 
-export default function HomepageClient({ initialArticles }: HomepageClientProps) {
-  const { data: session } = useSession();
+export default function HomepageClient({
+  initialArticles,
+  forYouArticles = [],
+  userPreferences = [],
+}: HomepageClientProps) {
+  const [user, setUser] = useState<any>(null);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const supabase = createClientComponentClient();
+  const router = useRouter();
+
+  useEffect(() => {
+    async function getSession() {
+      const { data: { session } } = await supabase.auth.getSession();
+      setUser(session?.user ?? null);
+    }
+    getSession();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [supabase]);
+
   const { resolvedTheme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -121,6 +150,18 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
   }, [initialArticles]);
 
   const filteredArticles = useMemo(() => {
+    if (activeCategory === "foryou") {
+      let result = forYouArticles;
+      if (searchQuery) {
+        result = result.filter((article) => 
+          article.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          article.summary.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          article.sourceName.toLowerCase().includes(searchQuery.toLowerCase())
+        );
+      }
+      return result;
+    }
+
     let result = allArticles.filter((article) => {
       // 1. Search Query Match
       const matchesSearch =
@@ -135,7 +176,7 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
         const isHighCred = article.source?.credibility === "VERY_HIGH" || article.source?.credibility === "HIGH";
         const isHighConf = article.analysis?.verification?.confidenceLevel === "High" || article.analysis?.verification?.confidenceLevel === "HIGH";
         if (!isTrue && !isHighCred && !isHighConf) return false;
-      } else if (activeCategory !== "top" && activeCategory !== "foryou") {
+      } else if (activeCategory !== "top") {
         const cat = getArticleCategory(article.title, article.summary);
         if (cat !== activeCategory) return false;
       }
@@ -143,23 +184,8 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
       return true;
     });
 
-    // Mimic algorithmic feed personalization for "For You"
-    if (activeCategory === "foryou") {
-      result = [...result].sort((a, b) => {
-        const aVerified = isVerified(a) ? 1 : 0;
-        const bVerified = isVerified(b) ? 1 : 0;
-        if (aVerified !== bVerified) return bVerified - aVerified;
-
-        const aScore = getConsensusScore(a) || 0;
-        const bScore = getConsensusScore(b) || 0;
-        if (aScore !== bScore) return bScore - aScore;
-
-        return new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime();
-      });
-    }
-
     return result;
-  }, [allArticles, searchQuery, activeCategory]);
+  }, [allArticles, forYouArticles, searchQuery, activeCategory]);
 
   const trendingVerified = useMemo(() => {
     return allArticles
@@ -242,26 +268,15 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
                 )}
               </button>
 
-              {session ? (
-                <div className="flex items-center gap-2">
-                  <span className="hidden md:inline-flex text-xs font-semibold text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-3 py-1.5 rounded-full border dark:border-slate-700">
-                    @{session.user?.name}
-                  </span>
-                  <button
-                    onClick={() => signOut()}
-                    className="p-2 rounded-full hover:bg-slate-150 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 cursor-pointer"
-                    title="Sign Out"
-                  >
-                    <LogOut className="h-4.5 w-4.5" />
-                  </button>
-                </div>
+              {user ? (
+                <UserMenu user={user} onSignOut={() => { setUser(null); router.refresh(); }} />
               ) : (
                 <button
-                  onClick={() => signIn()}
-                  className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-750 text-slate-600 dark:text-slate-400 cursor-pointer transition-colors"
+                  onClick={() => setIsAuthModalOpen(true)}
+                  className="flex items-center gap-1.5 px-3.5 h-9 rounded-full bg-slate-100 dark:bg-slate-850 hover:bg-slate-200 dark:hover:bg-slate-750 text-slate-705 dark:text-slate-300 font-bold text-[10px] uppercase tracking-wider cursor-pointer border border-slate-250 dark:border-slate-850 transition-colors shadow-sm"
                   title="Sign In"
                 >
-                  <User className="h-4.5 w-4.5" />
+                  <span>Sign In</span>
                 </button>
               )}
             </div>
@@ -537,10 +552,42 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
           ) : (
             /* Empty State */
             <div className="text-center py-16 px-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl max-w-md mx-auto transition-colors duration-300">
-              <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">No articles available for this category</h3>
-              <p className="text-slate-550 dark:text-slate-400 text-sm mt-1.5 leading-relaxed">
-                No matching feeds could be indexed for "{CATEGORIES.find(c => c.id === activeCategory)?.label}". Hit the Sync trigger in the top right to download new RSS streams.
-              </p>
+              {activeCategory === "foryou" ? (
+                user ? (
+                  <>
+                    <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">Expand your desk preferences</h3>
+                    <p className="text-slate-500 dark:text-slate-400 text-sm mt-1.5 leading-relaxed">
+                      We couldn't find any recent briefings matching your current desk interests. Try adding more interests to your profile.
+                    </p>
+                    <Link
+                      href="/onboarding"
+                      className="inline-block mt-4 px-5 h-9 leading-9 rounded-full bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 font-bold text-[10px] uppercase tracking-wider hover:opacity-90 active:scale-98 transition-all"
+                    >
+                      Configure Desk
+                    </Link>
+                  </>
+                ) : (
+                  <>
+                    <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">Sign in to personalize your feed</h3>
+                    <p className="text-slate-500 dark:text-slate-400 text-sm mt-1.5 leading-relaxed">
+                      Create an account or sign in to configure your personal intelligence desk and view tailored briefings.
+                    </p>
+                    <button
+                      onClick={() => setIsAuthModalOpen(true)}
+                      className="mt-4 px-5 h-9 rounded-full bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 font-bold text-[10px] uppercase tracking-wider hover:opacity-90 active:scale-98 transition-all cursor-pointer"
+                    >
+                      Sign In
+                    </button>
+                  </>
+                )
+              ) : (
+                <>
+                  <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">No articles available for this category</h3>
+                  <p className="text-slate-500 dark:text-slate-400 text-sm mt-1.5 leading-relaxed">
+                    No matching feeds could be indexed for "{CATEGORIES.find(c => c.id === activeCategory)?.label}". Hit the Sync trigger in the top right to download new RSS streams.
+                  </p>
+                </>
+              )}
             </div>
           )}
 
@@ -549,6 +596,9 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
 
       {/* Floating Scroll to Top */}
       <BackToTop />
+
+      {/* Velvet Rope Auth Modal */}
+      <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} />
 
       {/* Clean Minimalist Aggregator Footer */}
       <footer className="mt-20 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 py-10 transition-colors duration-300">

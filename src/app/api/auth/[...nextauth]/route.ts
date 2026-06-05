@@ -1,6 +1,8 @@
-import NextAuth from "next-auth";
-import { authOptions } from "@/lib/auth";
+// Deprecated NextAuth Route handler, replaced by Supabase Auth callback route.
+export async function GET() {
+  return new Response("NextAuth is disabled. Please use Supabase Auth.", { status: 404 });
+}
 
-const handler = NextAuth(authOptions);
-
-export { handler as GET, handler as POST };
+export async function POST() {
+  return new Response("NextAuth is disabled. Please use Supabase Auth.", { status: 404 });
+}

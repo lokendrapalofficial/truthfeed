@@ -26,6 +26,7 @@ model Article {
   communityNotes CommunityNote[]
   relatedSources Json?
   analysis       Analysis?
+  savedBy        User[]
 }
 
 model Source {
@@ -72,9 +73,13 @@ enum Credibility {
 }
 
 model User {
-  id             String          @id @default(cuid())
-  name           String          @unique
+  id             String          @id @default(uuid())
+  email          String          @unique
+  name           String?
+  preferences    Json?           // Stores array of selected interests like ["Tech Markets", "Geopolitics"]
+  isPro          Boolean         @default(false)
   createdAt      DateTime        @default(now())
+  articles       Article[]       // Relation to saved/bookmarked articles
   communityNotes CommunityNote[]
 }
 
@@ -92,14 +97,23 @@ model CommunityNote {
 }
 
 model Analysis {
-  id           String   @id @default(cuid())
-  articleId    String   @unique
-  article      Article  @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  id           String         @id @default(cuid())
+  articleId    String         @unique
+  article      Article        @relation(fields: [articleId], references: [id], onDelete: Cascade)
   claim        String
   briefing     String?
-  wikiContexts Json?
   category     String?
-  articleText  String?
   verification Json?
-  createdAt    DateTime @default(now())
+  framingMatrix Json?
+  createdAt    DateTime       @default(now())
+  conflictAlert ConflictAlert?
+}
+
+model ConflictAlert {
+  id         String   @id @default(cuid())
+  analysisId String   @unique
+  analysis   Analysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+  claim      String
+  category   String?
+  createdAt  DateTime @default(now())
 }

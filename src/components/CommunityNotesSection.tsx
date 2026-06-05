@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useState, useTransition, useMemo } from "react";
-import { useSession, signIn } from "next-auth/react";
+import React, { useState, useTransition, useMemo, useEffect } from "react";
+import { createClientComponentClient } from "@/lib/supabase";
 import { ThumbsUp, ThumbsDown, ExternalLink, MessageSquare, PlusCircle, AlertCircle, LogIn } from "lucide-react";
 import { submitNote, voteNote } from "@/app/actions/noteActions";
+import AuthModal from "@/components/AuthModal";
 
 export interface NoteItem {
   id: string;
@@ -25,7 +26,26 @@ interface CommunityNotesSectionProps {
 }
 
 export default function CommunityNotesSection({ articleId, notes }: CommunityNotesSectionProps) {
-  const { data: session } = useSession();
+  const [user, setUser] = useState<any>(null);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const supabase = createClientComponentClient();
+
+  useEffect(() => {
+    async function getSession() {
+      const { data: { session } } = await supabase.auth.getSession();
+      setUser(session?.user ?? null);
+    }
+    getSession();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [supabase]);
+
   const [noteText, setNoteText] = useState("");
   const [sourceUrl, setSourceUrl] = useState("");
   const [isPending, startTransition] = useTransition();
@@ -56,7 +76,7 @@ export default function CommunityNotesSection({ articleId, notes }: CommunityNot
   };
 
   const handleVote = (noteId: string, voteType: "UPVOTE" | "DOWNVOTE") => {
-    if (!session) {
+    if (!user) {
       setError("You must be logged in to vote.");
       setTimeout(() => setError(null), 3000);
       return;
@@ -178,7 +198,7 @@ export default function CommunityNotesSection({ articleId, notes }: CommunityNot
       </div>
 
       {/* Submission Form Card */}
-      {session ? (
+      {user ? (
         <form
           onSubmit={handleSubmit}
           className="p-6 border border-zinc-200 dark:border-slate-700 bg-white dark:bg-slate-800 rounded-2xl shadow-sm space-y-4 transition-colors duration-300"
@@ -258,7 +278,7 @@ export default function CommunityNotesSection({ articleId, notes }: CommunityNot
             </p>
           </div>
           <button
-            onClick={() => signIn()}
+            onClick={() => setIsAuthModalOpen(true)}
             className="inline-flex items-center justify-center gap-1.5 h-9 px-4 rounded-full bg-zinc-900 dark:bg-slate-100 hover:bg-zinc-800 dark:hover:bg-slate-200 text-white dark:text-slate-900 text-[10px] font-bold uppercase tracking-wider shadow-sm transition-all active:scale-95 duration-200 cursor-pointer"
           >
             <LogIn className="h-3 w-3" />
@@ -267,6 +287,8 @@ export default function CommunityNotesSection({ articleId, notes }: CommunityNot
         </div>
       )}
 
+      {/* Auth Modal */}
+      <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} />
     </div>
   );
 }

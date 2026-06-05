@@ -1,14 +1,16 @@
 "use server";
 
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { createServerActionClient } from "@/lib/supabaseServer";
+import { cookies } from "next/headers";
 import { prisma } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 
 export async function submitNote(articleId: string, text: string, sourceUrl: string) {
   try {
-    const session = await getServerSession(authOptions);
-    const userId = (session?.user as any)?.id;
+    const cookieStore = await cookies();
+    const supabase = createServerActionClient({ cookies: () => cookieStore });
+    const { data: { session } } = await supabase.auth.getSession();
+    const userId = session?.user?.id;
 
     if (!session || !userId) {
       return { success: false, error: "You must be signed in to submit a community note." };
@@ -44,7 +46,9 @@ export async function submitNote(articleId: string, text: string, sourceUrl: str
 
 export async function voteNote(noteId: string, voteType: "UPVOTE" | "DOWNVOTE") {
   try {
-    const session = await getServerSession(authOptions);
+    const cookieStore = await cookies();
+    const supabase = createServerActionClient({ cookies: () => cookieStore });
+    const { data: { session } } = await supabase.auth.getSession();
     if (!session) {
       return { success: false, error: "You must be signed in to vote on community notes." };
     }

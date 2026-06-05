@@ -138,6 +138,51 @@ async function main() {
     });
     console.log(`Seeded source: ${source.name} [Bias: ${source.bias}, Credibility: ${source.credibility}]`);
   }
+
+  console.log("Setting up PostgreSQL Conflict Radar trigger...");
+  try {
+    await prisma.$executeRawUnsafe(`
+      CREATE OR REPLACE FUNCTION log_conflict_alerts()
+      RETURNS TRIGGER AS $$
+      BEGIN
+        IF NEW.verification IS NOT NULL AND (
+          NEW.verification->>'confidenceLevel' = 'Conflicting' OR 
+          NEW.verification->>'confidenceLevel' = 'Low'
+        ) THEN
+          INSERT INTO "ConflictAlert" ("id", "analysisId", "claim", "category", "createdAt")
+          VALUES (
+            'alert_' || substr(md5(random()::text), 1, 20),
+            NEW.id,
+            NEW.claim,
+            NEW.category,
+            NOW()
+          )
+          ON CONFLICT ("analysisId") DO UPDATE
+          SET "claim" = NEW.claim,
+              "category" = NEW.category;
+        ELSE
+          DELETE FROM "ConflictAlert" WHERE "analysisId" = NEW.id;
+        END IF;
+        RETURN NEW;
+      END;
+      $$ LANGUAGE plpgsql;
+    `);
+
+    await prisma.$executeRawUnsafe(`
+      DROP TRIGGER IF EXISTS trg_log_conflict_alerts ON "Analysis";
+    `);
+    
+    await prisma.$executeRawUnsafe(`
+      CREATE TRIGGER trg_log_conflict_alerts
+      AFTER INSERT OR UPDATE ON "Analysis"
+      FOR EACH ROW
+      EXECUTE FUNCTION log_conflict_alerts();
+    `);
+    console.log("Conflict Radar trigger configured successfully!");
+  } catch (triggerError) {
+    console.error("Failed to apply PostgreSQL triggers (might be non-Postgres DB):", triggerError);
+  }
+
   console.log("Seeding complete!");
 }
 

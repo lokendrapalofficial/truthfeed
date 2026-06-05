@@ -1,9 +1,11 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Search, Globe, Award, HelpCircle, User, LogIn, LogOut, Sun, Moon } from "lucide-react";
-import { useSession, signIn, signOut } from "next-auth/react";
+import { Search, Globe, Award, HelpCircle, User, LogIn, Sun, Moon } from "lucide-react";
+import { createClientComponentClient } from "@/lib/supabase";
 import { useTheme } from "next-themes";
+import AuthModal from "@/components/AuthModal";
+import UserMenu from "@/components/UserMenu";
 
 interface NavbarProps {
   searchQuery: string;
@@ -18,7 +20,26 @@ export default function Navbar({
   activeTab,
   setActiveTab,
 }: NavbarProps) {
-  const { data: session } = useSession();
+  const [user, setUser] = useState<any>(null);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const supabase = createClientComponentClient();
+
+  useEffect(() => {
+    async function getSession() {
+      const { data: { session } } = await supabase.auth.getSession();
+      setUser(session?.user ?? null);
+    }
+    getSession();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [supabase]);
+
   const { resolvedTheme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
 
@@ -104,27 +125,17 @@ export default function Navbar({
             </button>
 
             {/* Session States */}
-            {session ? (
+            {user ? (
               <div className="flex items-center gap-2 pl-2 border-l border-zinc-200 dark:border-slate-700 ml-1">
-                <div className="hidden lg:flex items-center gap-1 text-xs font-medium text-zinc-500 dark:text-slate-400">
-                  <User className="h-3.5 w-3.5 shrink-0 text-zinc-400" />
-                  <span className="line-clamp-1 max-w-[100px]">@{session.user?.name}</span>
-                </div>
-                <button
-                  onClick={() => signOut()}
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wider text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-200 transition-all duration-200 cursor-pointer"
-                >
-                  <LogOut className="h-3 w-3" />
-                  <span>Logout</span>
-                </button>
+                <UserMenu user={user} onSignOut={() => setUser(null)} />
               </div>
             ) : (
               <button
-                onClick={() => signIn()}
+                onClick={() => setIsAuthModalOpen(true)}
                 className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wider text-white dark:text-slate-900 bg-zinc-900 hover:bg-zinc-800 dark:bg-slate-100 dark:hover:bg-slate-200 border border-transparent transition-all duration-200 cursor-pointer shadow-sm ml-1"
               >
                 <LogIn className="h-3 w-3" />
-                <span>Set Username</span>
+                <span>Sign In</span>
               </button>
             )}
           </div>
@@ -144,6 +155,7 @@ export default function Navbar({
           />
         </div>
       </div>
+      <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} />
     </nav>
   );
 }

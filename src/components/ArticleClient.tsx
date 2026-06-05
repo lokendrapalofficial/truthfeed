@@ -9,19 +9,9 @@ import SourceBadge from "@/components/SourceBadge";
 import CommunityNotesSection, { NoteItem } from "@/components/CommunityNotesSection";
 import NewsImage from "@/components/NewsImage";
 import VerificationDossier from "@/components/VerificationDossier";
-import { parseRelatedArticles } from "@/lib/rssParser";
+import DossierSkeleton from "@/components/DossierSkeleton";
 import { useTheme } from "next-themes";
 import { analyzeArticle } from "@/app/actions/analyzeArticle";
-import { WikiContext } from "@/lib/wiki";
-
-function getBriefingCategory(title: string): string {
-  const t = title.toLowerCase();
-  if (t.match(/\b(court|senate|election|trump|biden|harris|law|government|president|policy|democrat|republican|tax|debt|tariff|white house|congress|politics|world|israel|ceasefire|border|clash|attack|treaty|suriname)\b/)) return "World";
-  if (t.match(/\b(sport|game|nba|nfl|ipl|cricket|cup|stadium|athlete|championship|tennis|soccer|olympics|race|match|win|losing|golf)\b/)) return "Sports";
-  if (t.match(/\b(apple|google|microsoft|ai|meta|nvidia|intel|openai|semiconductor|chip|cybersecurity|software|tech|technology|phone|quantum|robot|market|finance|stock|stocks|economy|business|ceo|company|billion)\b/)) return "Tech/Business";
-  if (t.match(/\b(movie|film|hollywood|actor|actress|music|album|singer|pop|concert|tv|netflix|award|grammy|star|entertainment|celebrity|popstar|rapper)\b/)) return "Entertainment";
-  return "World";
-}
 
 interface ArticleClientProps {
   article: any;
@@ -38,72 +28,74 @@ function getCleanHeadline(title: string, sourceName: string): string {
   return clean;
 }
 
-// Extract a clean 2-paragraph excerpt from article content
-function getArticleParagraphs(title: string, summary: string | null, content: string | null, sourceName: string): string[] {
-  let clean = summary || content || "";
-  if (clean.includes("<ol>") || clean.includes("<li>")) {
-    clean = clean.replace(/<ol>[\s\S]*?<\/ol>/gi, "");
-  }
-  clean = clean.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
-  clean = clean.replace(/See more headlines[\s\S]*/gi, "").trim();
-
-  let p1 = clean;
-  if (!p1 || p1.length < 60) {
-    p1 = `Reports from ${sourceName} indicate significant new developments regarding "${title}". Editorial staff and journalists are continuing to monitor the situation as official statements and primary source documents are released.`;
-  }
-
-  const p2 = `Verification teams are actively reviewing the details, factual assertions, and media coverage surrounding this story. Readers can access the full, uninterrupted report directly from ${sourceName} via the original publisher link below.`;
-
-  return [p1, p2];
-}
-
 export default function ArticleClient({ article, serializedNotes }: ArticleClientProps) {
   const { resolvedTheme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
-  const [verificationState, setVerificationState] = useState<"loading" | "verified" | "error">("loading");
-  const [analysisData, setAnalysisData] = useState<string | null>(null); // quickBrief
-  const [deepDiveData, setDeepDiveData] = useState<string | null>(null); // deepDive
-  const [verificationData, setVerificationData] = useState<any | null>(null); // verification scorecard
-  const [wikiContexts, setWikiContexts] = useState<WikiContext[]>([]);
-  const [category, setCategory] = useState<string>("World");
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const analysis = article.analysis;
 
-  const handleVerify = async () => {
-    setVerificationState("loading");
-    setErrorMsg(null);
+  // Initialize compilation states
+  const [verificationState, setVerificationState] = useState<"loading" | "verified" | "error">(
+    analysis && analysis.briefing ? "verified" : "loading"
+  );
+  const [analysisData, setAnalysisData] = useState<string | null>(analysis?.briefing || null);
+  const [verificationData, setVerificationData] = useState<any | null>(analysis?.verification || null);
+  const [framingMatrix, setFramingMatrix] = useState<any[]>(() => {
+    if (!analysis?.framingMatrix) return [];
+    return typeof analysis.framingMatrix === "string"
+      ? JSON.parse(analysis.framingMatrix)
+      : analysis.framingMatrix;
+  });
+  const [category, setCategory] = useState<string>(analysis?.category || "World");
 
-    const detectedCategory = getBriefingCategory(article.title);
-
-    try {
-      const res = (await analyzeArticle(
-        article.id,
-        article.title,
-        article.summary || article.content || undefined,
-        article.relatedSources
-      )) as any;
-
-      if (res.success && (res.briefing || res.articleText)) {
-        setAnalysisData(res.briefing || res.articleText);
-        setDeepDiveData(res.articleText || res.briefing);
-        setVerificationData(res.verification || null);
-        setWikiContexts(res.wikiContexts || []);
-        setCategory(res.category || detectedCategory);
-        setVerificationState("verified");
-      } else {
-        setErrorMsg(res.error || "Briefing compilation failed.");
-        setVerificationState("error");
-      }
-    } catch (e: any) {
-      console.error(e);
-      setErrorMsg(e.message || "Failed to execute claim verification.");
-      setVerificationState("error");
-    }
-  };
-
+  // On-mount silent compilation trigger if analysis is missing
   useEffect(() => {
     setMounted(true);
-    handleVerify();
-  }, []);
+
+    if (verificationState === "loading") {
+      let isSubscribed = true;
+
+      const triggerCompilation = async () => {
+        try {
+          const res = await analyzeArticle(
+            article.id,
+            article.title,
+            article.summary || article.content,
+            article.relatedSources
+          );
+
+          if (!isSubscribed) return;
+
+          if (res.success) {
+            setAnalysisData(res.briefing || "");
+            setCategory(res.category || "World");
+            setVerificationData(res.verification || null);
+            setFramingMatrix(
+              Array.isArray(res.framingMatrix)
+                ? res.framingMatrix
+                : typeof res.framingMatrix === "string"
+                ? JSON.parse(res.framingMatrix)
+                : []
+            );
+            setVerificationState("verified");
+          } else {
+            console.error("Compilation failed:", res.error);
+            setVerificationState("error");
+          }
+        } catch (error) {
+          console.error("Compilation error:", error);
+          if (isSubscribed) {
+            setVerificationState("error");
+          }
+        }
+      };
+
+      triggerCompilation();
+
+      return () => {
+        isSubscribed = false;
+      };
+    }
+  }, [article.id, article.title, article.summary, article.content, article.relatedSources, verificationState]);
 
   const formattedDate = new Date(article.publishedAt).toLocaleDateString("en-US", {
     weekday: "long",
@@ -113,7 +105,6 @@ export default function ArticleClient({ article, serializedNotes }: ArticleClien
   });
 
   const cleanTitle = getCleanHeadline(article.title, article.sourceName);
-  const paragraphs = getArticleParagraphs(cleanTitle, article.summary, article.content, article.sourceName);
 
   return (
     <div className="flex flex-col min-h-screen bg-white dark:bg-slate-900 text-gray-900 dark:text-slate-100 font-sans antialiased transition-colors duration-300">
@@ -190,60 +181,12 @@ export default function ArticleClient({ article, serializedNotes }: ArticleClien
           />
         </div>
 
-        {/* ——— ARTICLE EXCERPT ——— */}
-        <section className="space-y-4">
-          {paragraphs.map((p, idx) => (
-            <p key={idx} className="text-base text-gray-700 dark:text-slate-300 leading-relaxed font-sans">
-              {p}
-            </p>
-          ))}
-        </section>
-
-        {/* ——— ERROR SECTION ——— */}
-        {verificationState === "error" && (
-          <div className="flex flex-col items-center justify-center p-6 border border-dashed border-rose-200 dark:border-rose-800 rounded-xl bg-rose-50/50 dark:bg-rose-950/10 text-center gap-4 transition-colors">
-            <p className="text-xs text-rose-600 dark:text-rose-450 font-medium">
-              {errorMsg || "Briefing compilation failed."}
-            </p>
-            <button
-              onClick={handleVerify}
-              className="px-4 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-gray-700 dark:text-slate-350 text-xs font-semibold active:scale-[0.98] transition-all cursor-pointer"
-            >
-              Retry Compilation
-            </button>
-          </div>
-        )}
-
-        {/* ——— DRAFTING LOADER SECTION ——— */}
+        {/* ——— DRAFTING LOADER SKELETON STATE ——— */}
         {verificationState === "loading" && (
-          <div className="max-w-2xl mx-auto px-4 py-8 space-y-6">
-            <div className="text-xs font-mono uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center gap-2 select-none">
-              <span className="flex h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulse" />
-              <span>Drafting verified report...</span>
-            </div>
-            <div className="animate-pulse space-y-8">
-              {/* Paragraph 1: 3 lines of text */}
-              <div className="space-y-3">
-                <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-full" />
-                <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-11/12" />
-                <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-4/5" />
-              </div>
-              {/* Paragraph 2: 4 lines of text */}
-              <div className="space-y-3">
-                <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-full" />
-                <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-11/12" />
-                <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-5/6" />
-                <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-3/4" />
-              </div>
-              {/* Paragraph 3: 2 lines of text */}
-              <div className="space-y-3">
-                <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-full" />
-                <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-5/6" />
-              </div>
-            </div>
-          </div>
+          <DossierSkeleton />
         )}
 
+        {/* ——— ANCHOR POINT FOR ACTIVE INTELLIGENCE DOSSIER ——— */}
         <AnimatePresence>
           {verificationState === "verified" && (
             <motion.div
@@ -257,16 +200,68 @@ export default function ArticleClient({ article, serializedNotes }: ArticleClien
                 sourceName={article.sourceName}
                 relatedSources={article.relatedSources}
                 briefing={analysisData}
-                articleText={deepDiveData}
-                wikiContexts={wikiContexts}
                 category={category}
                 verification={verificationData}
+                framingMatrix={framingMatrix}
               />
             </motion.div>
           )}
         </AnimatePresence>
 
-        {/* ——— CONTINUE READING BUTTON ——— */}
+        {/* ——— ERROR / SOURCE MATRIX FALLBACK ——— */}
+        {verificationState === "error" && (
+          <div className="space-y-4 pt-2 border-t border-gray-100 dark:border-slate-800">
+            <div>
+              <h3 className="text-xs font-mono tracking-wider text-slate-550 dark:text-slate-400 uppercase select-none font-bold">
+                SOURCE MATRIX
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                Intelligence synthesis is currently offline. You can access direct event coverage from reporting newsrooms below:
+              </p>
+            </div>
+            
+            <div className="divide-y divide-slate-200 dark:divide-slate-800/80 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden bg-slate-50/50 dark:bg-slate-900/30">
+              {(() => {
+                const sourcesList = Array.isArray(article.relatedSources) ? article.relatedSources : [];
+                if (sourcesList.length === 0) {
+                  return (
+                    <div className="p-5 text-sm text-slate-500 dark:text-slate-450 italic text-center">
+                      No alternative sources reported for this article.
+                    </div>
+                  );
+                }
+                return sourcesList.map((item: any, idx: number) => (
+                  <div key={idx} className="p-4 flex items-start justify-between gap-4 hover:bg-slate-100/50 dark:hover:bg-slate-850/40 transition-colors">
+                    <div className="space-y-1 min-w-0">
+                      <a
+                        href={item.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-bold text-sm text-slate-900 dark:text-slate-100 hover:underline leading-snug block transition-colors"
+                      >
+                        {item.title}
+                      </a>
+                      <span className="text-xs font-mono uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                        {item.sourceName || "Alternative Publisher"}
+                      </span>
+                    </div>
+                    <a
+                      href={item.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs font-bold text-blue-600 hover:text-blue-750 dark:text-blue-400 dark:hover:text-blue-300 inline-flex items-center gap-1 hover:underline select-none whitespace-nowrap shrink-0 pt-0.5"
+                    >
+                      <span>Access Report</span>
+                      <ExternalLink className="h-3.5 w-3.5" />
+                    </a>
+                  </div>
+                ));
+              })()}
+            </div>
+          </div>
+        )}
+
+        {/* ——— CONTINUE READING BUTTON (CTA) ——— */}
         <div className="pt-1">
           <a
             href={article.url}
@@ -279,48 +274,6 @@ export default function ArticleClient({ article, serializedNotes }: ArticleClien
             <ExternalLink className="h-4 w-4 opacity-50 group-hover:opacity-100 transition-opacity" />
           </a>
         </div>
-
-        {/* ——— HOW OTHERS ARE REPORTING THIS ——— */}
-        {(() => {
-          const related = parseRelatedArticles(article.content);
-          if (related.length === 0) return null;
-          return (
-            <section className="space-y-4 pt-2 border-t border-gray-100 dark:border-slate-800">
-              <div>
-                <h3 className="font-bold text-base text-gray-900 dark:text-slate-100 tracking-tight">
-                  How Others Are Reporting This
-                </h3>
-                <p className="text-xs text-gray-500 dark:text-slate-400 mt-0.5">
-                  Alternative coverage on this topic from other newsrooms.
-                </p>
-              </div>
-              <div className="divide-y divide-gray-100 dark:divide-slate-800">
-                {related.map((item, idx) => (
-                  <div key={idx} className="py-3.5 flex items-start gap-3">
-                    <span className="h-6 w-6 rounded-md bg-gray-100 dark:bg-slate-800 text-gray-700 dark:text-slate-300 font-bold text-xs flex items-center justify-center shrink-0 border border-gray-200 dark:border-slate-700">
-                      {item.source.charAt(0)}
-                    </span>
-                    <div className="space-y-0.5 min-w-0">
-                      <a
-                        href={item.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="font-semibold text-sm text-gray-900 dark:text-slate-100 hover:text-blue-600 dark:hover:text-blue-400 leading-snug block transition-colors"
-                      >
-                        {item.title}
-                      </a>
-                      <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-slate-450">
-                        <span className="font-bold text-gray-700 dark:text-slate-300">{item.source}</span>
-                        <span>·</span>
-                        <span>Alternative Coverage</span>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </section>
-          );
-        })()}
 
         {/* ——— SHARE WIDGET ——— */}
         <div className="pt-2 border-t border-gray-100 dark:border-slate-800">

@@ -97,70 +97,7 @@ function extractImageFromHtml(html: string): string | null {
   return match ? match[1] : null;
 }
 
-// Resolve a Google News article to the real publisher URL.
-// Uses the Google News batchexecute API protocol to fetch the redirect target.
-async function resolveGoogleNewsRedirect(googleUrl: string): Promise<string | null> {
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 7000);
-
-    const res = await fetch(googleUrl, {
-      signal: controller.signal,
-      headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.9",
-      },
-    });
-
-    clearTimeout(timeoutId);
-    if (!res.ok) return null;
-
-    const html = await res.text();
-    
-    // Extract the data-p attribute which contains the RPC requirements
-    const dataPMatch = html.match(/<c-wiz[^>]+data-p=["']([^"']+)["']/i);
-    if (!dataPMatch) return null;
-
-    const rawData = dataPMatch[1];
-    const decodedData = rawData.replace(/&quot;/g, '"');
-    
-    // Parse the protobuf-like array payload
-    const obj = JSON.parse(decodedData.replace('%.@.', '["garturlreq",'));
-    const reqPayload = [[
-      'Fbv4je', 
-      JSON.stringify([...obj.slice(0, -6), ...obj.slice(-2)]), 
-      'null', 
-      'generic'
-    ]];
-
-    const payload = new URLSearchParams();
-    payload.append('f.req', JSON.stringify([reqPayload]));
-
-    const postRes = await fetch('https://news.google.com/_/DotsSplashUi/data/batchexecute', {
-      method: 'POST',
-      body: payload.toString(),
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36'
-      }
-    });
-
-    if (!postRes.ok) return null;
-
-    const postData = await postRes.text();
-    const cleanJsonStr = postData.replace(")]}'\n", "");
-    const parsedBatch = JSON.parse(cleanJsonStr);
-    
-    const arrayString = parsedBatch[0][2];
-    const articleUrl = JSON.parse(arrayString)[1];
-    
-    return articleUrl;
-  } catch (e) {
-    console.error("resolveGoogleNewsRedirect error:", e);
-    return null;
-  }
-}
+// resolveGoogleNewsRedirect deleted (Task 2)
 
 // Keep a simple decode attempt for related article URLs (best-effort, not critical)
 function tryDecodeGoogleNewsUrl(googleUrl: string): string {
@@ -383,43 +320,12 @@ function extractMetaValue(html: string, nameOrProperty: string): string | null {
  * Fetch a page (article or publisher homepage) and extract og:image / twitter:image.
  * Returns null on any failure — caller falls through to next pipeline step.
  */
-async function fetchOgImage(pageUrl: string): Promise<string | null> {
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 8000);
-
-    const res = await fetch(pageUrl, {
-      signal: controller.signal,
-      headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.9",
-        "Cache-Control": "no-cache",
-        "Pragma": "no-cache"
-      },
-    });
-
-    clearTimeout(timeoutId);
-    if (!res.ok) return null;
-
-    const html = await res.text();
-
-    // Priority 1: og:image
-    const ogImage = extractMetaValue(html, "og:image");
-    if (ogImage && !isAdOrSpacerImage(ogImage)) return ogImage;
-
-    // Priority 2: twitter:image
-    const twitterImage = extractMetaValue(html, "twitter:image");
-    if (twitterImage && !isAdOrSpacerImage(twitterImage)) return twitterImage;
-
-    // Priority 3: standard thumbnail
-    const thumbnail = extractMetaValue(html, "thumbnail");
-    if (thumbnail && !isAdOrSpacerImage(thumbnail)) return thumbnail;
-
-    return null;
-  } catch {
-    return null;
+function fetchOgImage(item: any): string | null {
+  const rawUrl = extractRawImageUrl(item);
+  if (rawUrl) {
+    return sanitizeAndUpgradeImageUrl(rawUrl);
   }
+  return null;
 }
 
 export async function fetchNews() {
@@ -452,7 +358,7 @@ export async function fetchNews() {
 
       const rawItem = item as any;
       const title = rawItem.title;
-      let url = tryDecodeGoogleNewsUrl(rawItem.link);
+      let url = rawItem.link;
       const summary = rawItem.contentSnippet || "";
       const content = rawItem.content || rawItem.contentSnippet || "";
       const sourceName = rawItem.source?.text || rawItem.creator || "Google News";
@@ -503,78 +409,17 @@ export async function fetchNews() {
       }
 
       // ─────────────────────────────────────────────────────────────
-      // ENHANCED IMAGE PIPELINE — Real article photo first
+      // ENHANCED IMAGE PIPELINE — RSS XML ONLY (ToS Compliance)
       // ─────────────────────────────────────────────────────────────
       let imageUrl: string | null = null;
       let isLogo = false;
       let isThematic = false;
       let imageSource = "none";
 
-      const sourceUrl = sourceMap.get(rawItem.link) || null;
-      const sourceDomain = extractDomain(sourceUrl);
-
-      // STEP 1: Follow the Google News redirect → get real article URL → fetch og:image
-      // This is the primary path for article-specific hero images.
-      const realArticleUrl = await resolveGoogleNewsRedirect(rawItem.link);
-      if (realArticleUrl) {
-        url = realArticleUrl; // Normalize database unique URL key to the resolved publisher URL
-        const ogImage = await fetchOgImage(realArticleUrl);
-        if (ogImage) {
-          const sanitized = sanitizeAndUpgradeImageUrl(ogImage);
-          if (sanitized) {
-            imageUrl = sanitized;
-            imageSource = "article-og:image";
-          }
-        }
-      }
-
-      // STEP 2: RSS multi-tag extraction (enclosure, media:content, media:thumbnail, HTML img)
-      if (!imageUrl) {
-        const rawUrl = extractRawImageUrl(rawItem);
-        if (rawUrl) {
-          const sanitized = sanitizeAndUpgradeImageUrl(rawUrl);
-          if (sanitized) {
-            imageUrl = sanitized;
-            imageSource = "rss-tag";
-          }
-        }
-      }
-
-      // STEP 2.5: Consensus relatedSources fallback — try resolving and fetching images from alternative desks
-      if (!imageUrl && relatedSources.length > 0) {
-        for (const source of relatedSources.slice(0, 5)) {
-          try {
-            const resolvedUrl = await resolveGoogleNewsRedirect(source.url);
-            if (resolvedUrl) {
-              const ogImage = await fetchOgImage(resolvedUrl);
-              if (ogImage) {
-                const sanitized = sanitizeAndUpgradeImageUrl(ogImage);
-                if (sanitized) {
-                  imageUrl = sanitized;
-                  imageSource = `related-og:image (${source.sourceName})`;
-                  break;
-                }
-              }
-            }
-          } catch (e) {
-            console.error(`Failed to fetch image from related source ${source.sourceName}:`, e);
-          }
-        }
-      }
-
-      // STEP 3: Fallback — fetch og:image from publisher homepage
-      if (!imageUrl && sourceDomain) {
-        const homepageOg = await fetchOgImage(`https://${sourceDomain}`);
-        if (homepageOg) {
-          const sanitized = sanitizeAndUpgradeImageUrl(homepageOg);
-          if (sanitized) {
-            imageUrl = sanitized;
-            imageSource = "homepage-og:image";
-          }
-        }
-      }
-
-      if (!imageUrl) {
+      imageUrl = fetchOgImage(rawItem);
+      if (imageUrl) {
+        imageSource = "rss-tag";
+      } else {
         imageUrl = getDeterministicImage(title);
         isThematic = true;
         imageSource = "unsplash-thematic";
