@@ -1,19 +1,17 @@
 "use client";
 
-import React, { useState, useMemo, useTransition, useEffect, useRef } from "react";
+import React, { useState, useMemo, useTransition, useEffect } from "react";
 import Link from "next/link";
-import { Search, RefreshCw, Sun, Moon, LayoutGrid, List } from "lucide-react";
+import { Search, RefreshCw, Sun, Moon } from "lucide-react";
 import { createClientComponentClient } from "@/lib/supabase";
 import { useTheme } from "next-themes";
 import { useRouter } from "next/navigation";
 import AuthModal from "@/components/AuthModal";
 import UserMenu from "@/components/UserMenu";
 import { fetchNews } from "@/app/actions/fetchNews";
-import { motion } from "framer-motion";
 import BackToTop from "@/components/BackToTop";
-import NewsCard from "@/components/NewsCard";
-import NewsImage from "@/components/NewsImage";
-import { formatSmartDate, getArticleCategory } from "@/lib/utils";
+import WireCard from "@/components/WireCard";
+import { getArticleCategory } from "@/lib/utils";
 
 interface SourceData {
   id: string;
@@ -42,34 +40,6 @@ const CATEGORIES = [
   { id: "science", label: "Science" },
   { id: "health", label: "Health" },
 ];
-
-const getConsensusScore = (article: any) => {
-  if (article.analysis?.verification?.consensusScore !== undefined && article.analysis?.verification?.consensusScore !== null) {
-    return article.analysis.verification.consensusScore;
-  }
-  const factChecks = article.factChecks || [];
-  if (factChecks.some((fc: any) => fc.rating === "TRUE")) return 5;
-  if (article.source?.credibility === "VERY_HIGH") return 5;
-  if (article.source?.credibility === "HIGH") return 4;
-  return null;
-};
-
-const isVerified = (article: any) => {
-  return article.factChecks?.some((fc: any) => fc.rating === "TRUE") ||
-         article.source?.credibility === "VERY_HIGH" ||
-         article.source?.credibility === "HIGH" ||
-         article.analysis?.verification?.confidenceLevel === "High" ||
-         article.analysis?.verification?.confidenceLevel === "HIGH";
-};
-
-const isConflicting = (article: any) => {
-  return article.factChecks?.some((fc: any) => fc.rating === "FALSE" || fc.rating === "MIXED") ||
-         article.source?.credibility === "LOW" ||
-         article.source?.credibility === "VERY_LOW" ||
-         article.analysis?.verification?.confidenceLevel === "Conflicting" ||
-         article.analysis?.verification?.confidenceLevel === "CONFLICTING" ||
-         article.analysis?.verification?.confidenceLevel === "Low";
-};
 
 export default function HomepageClient({
   initialArticles,
@@ -101,21 +71,12 @@ export default function HomepageClient({
   const [mounted, setMounted] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [activeCategory, setActiveCategory] = useState("top");
-  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [isPending, startTransition] = useTransition();
   const [refreshMessage, setRefreshMessage] = useState<string | null>(null);
+
   useEffect(() => {
     setMounted(true);
-    const savedView = localStorage.getItem("truthfeed-viewmode");
-    if (savedView === "grid" || savedView === "list") {
-      setViewMode(savedView);
-    }
   }, []);
-
-  const handleViewModeChange = (mode: "grid" | "list") => {
-    setViewMode(mode);
-    localStorage.setItem("truthfeed-viewmode", mode);
-  };
 
   const handleRefresh = () => {
     startTransition(async () => {
@@ -146,6 +107,7 @@ export default function HomepageClient({
       factChecks: art.factChecks || [],
       source: art.source,
       analysis: art.analysis,
+      relatedSources: art.relatedSources || [],
     }));
   }, [initialArticles]);
 
@@ -155,7 +117,6 @@ export default function HomepageClient({
       if (searchQuery) {
         result = result.filter((article) => 
           article.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          article.summary.toLowerCase().includes(searchQuery.toLowerCase()) ||
           article.sourceName.toLowerCase().includes(searchQuery.toLowerCase())
         );
       }
@@ -163,10 +124,9 @@ export default function HomepageClient({
     }
 
     let result = allArticles.filter((article) => {
-      // 1. Search Query Match
+      // 1. Search Query Match (Banish raw RSS summary/content search dumps)
       const matchesSearch =
         article.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        article.summary.toLowerCase().includes(searchQuery.toLowerCase()) ||
         article.sourceName.toLowerCase().includes(searchQuery.toLowerCase());
       if (!matchesSearch) return false;
 
@@ -177,7 +137,7 @@ export default function HomepageClient({
         const isHighConf = article.analysis?.verification?.confidenceLevel === "High" || article.analysis?.verification?.confidenceLevel === "HIGH";
         if (!isTrue && !isHighCred && !isHighConf) return false;
       } else if (activeCategory !== "top") {
-        const cat = getArticleCategory(article.title, article.summary);
+        const cat = getArticleCategory(article.title, article.summary || article.content || "");
         if (cat !== activeCategory) return false;
       }
 
@@ -187,25 +147,15 @@ export default function HomepageClient({
     return result;
   }, [allArticles, forYouArticles, searchQuery, activeCategory]);
 
-  const trendingVerified = useMemo(() => {
+  // Filter top 3 conflicting stories for the Fracture Index
+  const fractureArticles = useMemo(() => {
     return allArticles
-      .filter((art) => isVerified(art))
-      .slice(0, 5);
+      .filter((article) => {
+        const conf = article.analysis?.verification?.confidenceLevel;
+        return conf === "Conflicting" || conf === "CONFLICTING";
+      })
+      .slice(0, 3);
   }, [allArticles]);
-
-  const heroArticle = useMemo(() => {
-    return filteredArticles[0] || null;
-  }, [filteredArticles]);
-
-  const stackArticles = useMemo(() => {
-    return filteredArticles.slice(1, 5);
-  }, [filteredArticles]);
-
-  const feedArticles = useMemo(() => {
-    return filteredArticles.slice(5);
-  }, [filteredArticles]);
-
-  const heroColSpan = stackArticles.length > 0 ? "lg:col-span-8" : "lg:col-span-12";
 
   return (
     <div className="flex flex-col min-h-screen bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 font-sans antialiased transition-colors duration-300">
@@ -285,53 +235,25 @@ export default function HomepageClient({
         </div>
       </header>
 
-      {/* Sticky Category Ribbon */}
+      {/* Sticky Category Ribbon (Banish View toggler, feed is strictly wire list now) */}
       <div className="sticky top-16 z-40 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-b border-slate-200 dark:border-slate-700 transition-colors duration-300">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 flex items-center justify-between">
-          <div className="flex items-center gap-2 overflow-x-auto py-2.5 no-scrollbar flex-1 mr-4">
-            {CATEGORIES.map((cat) => {
-              const isActive = activeCategory === cat.id;
-              return (
-                <button
-                  key={cat.id}
-                  onClick={() => setActiveCategory(cat.id)}
-                  className={`px-4 py-1.5 text-xs font-semibold tracking-wide whitespace-nowrap rounded-full transition-all cursor-pointer ${
-                    isActive
-                      ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900"
-                      : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-205 hover:bg-slate-100 dark:hover:bg-slate-800"
-                  }`}
-                >
-                  {cat.label}
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Grid/List View Mode Toggler */}
-          <div className="flex items-center gap-1 shrink-0 border-l border-slate-200 dark:border-slate-800 pl-3 py-1.5">
-            <button
-              onClick={() => handleViewModeChange("grid")}
-              className={`p-1.5 rounded transition-colors cursor-pointer ${
-                viewMode === "grid"
-                  ? "bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100"
-                  : "text-slate-400 dark:text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-850 hover:text-slate-650 dark:hover:text-slate-350"
-              }`}
-              title="Grid View"
-            >
-              <LayoutGrid className="h-4.5 w-4.5" />
-            </button>
-            <button
-              onClick={() => handleViewModeChange("list")}
-              className={`p-1.5 rounded transition-colors cursor-pointer ${
-                viewMode === "list"
-                  ? "bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100"
-                  : "text-slate-400 dark:text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-855 hover:text-slate-650 dark:hover:text-slate-350"
-              }`}
-              title="List View"
-            >
-              <List className="h-4.5 w-4.5" />
-            </button>
-          </div>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-2.5 flex items-center overflow-x-auto no-scrollbar">
+          {CATEGORIES.map((cat) => {
+            const isActive = activeCategory === cat.id;
+            return (
+              <button
+                key={cat.id}
+                onClick={() => setActiveCategory(cat.id)}
+                className={`px-4 py-1.5 mr-2 text-xs font-semibold tracking-wide whitespace-nowrap rounded-full transition-all cursor-pointer ${
+                  isActive
+                    ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900"
+                    : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-205 hover:bg-slate-100 dark:hover:bg-slate-800"
+                }`}
+              >
+                {cat.label}
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -347,205 +269,47 @@ export default function HomepageClient({
           )}
 
           {filteredArticles.length > 0 ? (
-            <div className="grid grid-cols-1 xl:grid-cols-12 gap-8">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
               
-              {/* Left 9 Columns - Content */}
-              <div className="xl:col-span-9 space-y-10">
-                
-                {/* Hero & Stack Layout (Above the Fold) */}
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 pb-6 border-b border-slate-200 dark:border-slate-800/80">
-                  {/* Left Column (lg:col-span-8) - Hero Card */}
-                  {heroArticle && (
-                    <div className={heroColSpan}>
-                      <motion.article 
-                        whileHover={{ y: -2 }}
-                        className="group cursor-pointer"
-                      >
-                        <Link href={`/article/${heroArticle.id}`}>
-                          {/* Image */}
-                          <div className="aspect-video w-full overflow-hidden rounded-lg bg-slate-50 dark:bg-slate-950 relative">
-                            <NewsImage
-                              url={heroArticle.url}
-                              title={heroArticle.title}
-                              sourceName={heroArticle.sourceName}
-                              imageUrl={heroArticle.imageUrl}
-                              isLogo={heroArticle.isLogo}
-                              isThematic={heroArticle.isThematic}
-                              className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-102"
-                            />
-                          </div>
-                          
-                          {/* Category Tag */}
-                          <div className="mt-4">
-                            <span className="text-[10px] font-mono tracking-widest text-slate-500 uppercase">
-                              {(heroArticle.analysis?.category || getArticleCategory(heroArticle.title, heroArticle.summary)).toUpperCase()}
-                            </span>
-                          </div>
-
-                          {/* Title */}
-                          <h2 className="text-3xl md:text-4xl font-serif font-bold mt-1.5 text-slate-900 dark:text-slate-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors leading-tight">
-                            {heroArticle.title}
-                          </h2>
-                          
-                          {/* 2-sentence Quick Brief */}
-                          <p className="text-slate-600 dark:text-slate-300 mt-2.5 text-base leading-relaxed line-clamp-2 font-sans">
-                            {heroArticle.analysis?.briefing || heroArticle.summary || heroArticle.content}
-                          </p>
-                          
-                          {/* Footer */}
-                          <div className="flex items-center gap-3 mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/80 text-xs text-slate-500 dark:text-slate-400 font-mono">
-                            <span className="font-semibold text-slate-700 dark:text-slate-350">{heroArticle.sourceName}</span>
-                            <span>•</span>
-                            <div className="flex items-center gap-1">
-                              {formatSmartDate(heroArticle.publishedAt).showRedDot && (
-                                <span className="animate-pulse bg-red-500 rounded-full h-1.5 w-1.5 inline-block shrink-0" />
-                              )}
-                              <span>{formatSmartDate(heroArticle.publishedAt).text}</span>
-                            </div>
-                            
-                            {/* Verification Badge */}
-                            {isVerified(heroArticle) && (
-                              <>
-                                <span>•</span>
-                                <span className="text-emerald-700 dark:text-emerald-450 font-semibold flex items-center gap-1">
-                                  ✅ Verified{getConsensusScore(heroArticle) ? ` by ${getConsensusScore(heroArticle)} Sources` : ""}
-                                </span>
-                              </>
-                            )}
-                            {isConflicting(heroArticle) && (
-                              <>
-                                <span>•</span>
-                                <span className="text-rose-700 dark:text-rose-455 font-semibold flex items-center gap-1">
-                                  ⚠️ Conflicting
-                                </span>
-                              </>
-                            )}
-                          </div>
-                        </Link>
-                      </motion.article>
-                    </div>
-                  )}
-
-                  {/* Right Column (lg:col-span-4) - Stack of 3-4 secondary stories */}
-                  {stackArticles.length > 0 && (
-                    <div className="lg:col-span-4 flex flex-col justify-between">
-                      <div className="space-y-4">
-                        {stackArticles.map((article, idx) => {
-                          const smartDate = formatSmartDate(article.publishedAt);
-                          const isLast = idx === stackArticles.length - 1;
-                          return (
-                            <div key={article.id} className={!isLast ? "border-b border-slate-200 dark:border-slate-800 pb-4 mb-4" : ""}>
-                              <Link href={`/article/${article.id}`} className="group flex gap-4 items-start justify-between">
-                                {/* Text Section */}
-                                <div className="flex-1 min-w-0">
-                                  {/* Category Tag */}
-                                  <span className="text-[10px] font-mono tracking-wider text-slate-500 uppercase block mb-1">
-                                    {(article.analysis?.category || getArticleCategory(article.title, article.summary)).toUpperCase()}
-                                  </span>
-                                  
-                                  {/* Headline */}
-                                  <h3 className="font-bold text-base text-slate-900 dark:text-slate-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors leading-snug">
-                                    {article.title}
-                                  </h3>
-                                  
-                                  {/* Verification Badge & Timestamp */}
-                                  <div className="flex items-center gap-2 mt-2 text-[10px] font-mono text-slate-500 dark:text-slate-455">
-                                    <span className="font-semibold text-slate-700 dark:text-slate-350">{article.sourceName}</span>
-                                    <span>•</span>
-                                    <div className="flex items-center gap-1 shrink-0">
-                                      {smartDate.showRedDot && (
-                                        <span className="animate-pulse bg-red-500 rounded-full h-1 w-1 inline-block shrink-0" />
-                                      )}
-                                      <span>{smartDate.text}</span>
-                                    </div>
-                                    {isVerified(article) && (
-                                      <span className="text-emerald-700 dark:text-emerald-450 font-semibold shrink-0">
-                                        ✅ Verified
-                                      </span>
-                                    )}
-                                    {isConflicting(article) && (
-                                      <span className="text-rose-700 dark:text-rose-450 font-semibold shrink-0">
-                                        ⚠️ Conflict
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-
-                                {/* Thumbnail */}
-                                <div className="w-24 h-24 shrink-0 overflow-hidden rounded bg-slate-50 dark:bg-slate-950 relative">
-                                  <NewsImage
-                                    url={article.url}
-                                    title={article.title}
-                                    sourceName={article.sourceName}
-                                    imageUrl={article.imageUrl}
-                                    isLogo={article.isLogo}
-                                    isThematic={article.isThematic}
-                                    className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
-                                  />
-                                </div>
-                              </Link>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* High Density Main Feed (Below the fold) */}
-                <section className="space-y-6">
-                  <div className="border-b border-slate-200 dark:border-slate-800 pb-3 flex justify-between items-center">
-                    <h2 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
-                      Latest Updates
-                    </h2>
-                  </div>
-
-                  {feedArticles.length > 0 ? (
-                    <div className={viewMode === "grid" ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" : "flex flex-col gap-4 max-w-3xl"}>
-                      {feedArticles.map((article) => (
-                        <NewsCard key={article.id} article={article} viewMode={viewMode} />
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-xs text-slate-400 dark:text-slate-550 italic py-6">
-                      No additional articles match your filter preferences.
-                    </p>
-                  )}
-                </section>
-
+              {/* Left Column (lg:col-span-8) - Wire Feed */}
+              <div className="lg:col-span-8 divide-y divide-slate-200 dark:divide-slate-800/80">
+                {filteredArticles.map((article) => (
+                  <WireCard key={article.id} article={article} />
+                ))}
               </div>
 
-              {/* Sticky Sidebar (xl:col-span-3) */}
-              <aside className="xl:col-span-3 hidden xl:block sticky top-28 self-start max-h-[calc(100vh-9rem)] overflow-y-auto no-scrollbar pr-1">
-                
-                {/* Trending Verifications */}
-                <div className="bg-slate-50 dark:bg-slate-900/50 rounded-xl p-4 border border-slate-200 dark:border-slate-800">
-                  <h3 className="font-extrabold text-sm uppercase tracking-wider text-slate-900 dark:text-slate-100 mb-3 pb-2 border-b border-slate-200 dark:border-slate-800">
-                    Trending 📈
-                  </h3>
-                  <div className="flex flex-col gap-3">
-                    {trendingVerified.length > 0 ? (
-                      trendingVerified.map((art, index) => (
-                        <div key={art.id} className="flex gap-3 py-2 border-b border-slate-100 dark:border-slate-800/55 last:border-0">
-                          <span className="text-xl font-extrabold text-slate-305 dark:text-slate-700 w-6 text-right shrink-0">
-                            {index + 1}
+              {/* Right Column (lg:col-span-4) - Fracture Index Sidebar (Desktop Only) */}
+              <aside className="lg:col-span-4 hidden lg:block sticky top-28 self-start">
+                <div className="bg-slate-950 text-white rounded-xl border border-rose-900/40 border-l-4 border-l-rose-600 p-5 shadow-md space-y-4">
+                  <div className="text-[10px] font-mono tracking-widest text-rose-500 uppercase select-none font-bold">
+                    THE FRACTURE INDEX
+                  </div>
+                  
+                  <div className="space-y-4">
+                    {fractureArticles.length > 0 ? (
+                      fractureArticles.map((article) => (
+                        <div key={article.id} className="space-y-1.5 pb-4 border-b border-slate-900 last:border-b-0 last:pb-0 last:border-transparent">
+                          <span className="text-[9px] font-mono bg-rose-950 text-rose-450 border border-rose-900/50 px-1.5 py-0.5 rounded font-bold inline-block">
+                            🔴 NARRATIVE FRACTURE
                           </span>
-                          <div className="flex-1 min-w-0">
-                            <Link href={`/article/${art.id}`} className="font-semibold text-sm text-slate-800 dark:text-slate-200 hover:text-blue-600 dark:hover:text-blue-400 line-clamp-2 transition-colors">
-                              {art.title}
-                            </Link>
-                            <span className="text-[10px] text-slate-400 dark:text-slate-500 font-mono mt-1 block">
-                              {art.sourceName} • {formatSmartDate(art.publishedAt).text}
-                            </span>
-                          </div>
+                          <Link 
+                            href={`/article/${article.id}`} 
+                            className="block font-serif font-bold text-sm text-slate-100 hover:text-rose-455 transition-colors leading-snug"
+                          >
+                            {article.title}
+                          </Link>
+                          <span className="text-[10px] text-slate-500 font-mono block">
+                            Publisher: {article.sourceName}
+                          </span>
                         </div>
                       ))
                     ) : (
-                      <p className="text-xs text-slate-400 italic">No verified stories trending today.</p>
+                      <p className="text-xs text-slate-500 italic font-mono leading-relaxed">
+                        No active narrative fractures detected today.
+                      </p>
                     )}
                   </div>
                 </div>
-
               </aside>
 
             </div>
@@ -606,10 +370,10 @@ export default function HomepageClient({
           <span className="text-sm font-bold tracking-tight text-slate-900 dark:text-slate-200 block">
             TruthFeed
           </span>
-          <p className="text-xs text-slate-500 dark:text-slate-400 leading-normal max-w-md mx-auto">
+          <p className="text-xs text-gray-500 dark:text-slate-400 leading-normal max-w-md mx-auto">
             Designed for fact-checking coverage comparisons and news transparency.
           </p>
-          <p className="text-[10px] text-slate-400 dark:text-slate-500">
+          <p className="text-[10px] text-gray-400 dark:text-slate-500">
             &copy; {new Date().getFullYear()} TruthFeed Initiative. All rights reserved.
           </p>
         </div>
