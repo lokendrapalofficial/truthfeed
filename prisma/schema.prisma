@@ -97,23 +97,14 @@ model CommunityNote {
 }
 
 model Analysis {
-  id           String         @id @default(cuid())
-  articleId    String         @unique
-  article      Article        @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  id           String   @id @default(cuid())
+  articleId    String   @unique
+  article      Article  @relation(fields: [articleId], references: [id], onDelete: Cascade)
   claim        String
   briefing     String?
+  wikiContexts Json?
   category     String?
+  articleText  String?
   verification Json?
-  framingMatrix Json?
-  createdAt    DateTime       @default(now())
-  conflictAlert ConflictAlert?
-}
-
-model ConflictAlert {
-  id         String   @id @default(cuid())
-  analysisId String   @unique
-  analysis   Analysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
-  claim      String
-  category   String?
-  createdAt  DateTime @default(now())
+  createdAt    DateTime @default(now())
 }

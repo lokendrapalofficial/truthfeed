@@ -97,7 +97,70 @@ function extractImageFromHtml(html: string): string | null {
   return match ? match[1] : null;
 }
 
-// resolveGoogleNewsRedirect deleted (Task 2)
+// Resolve a Google News article to the real publisher URL.
+// Uses the Google News batchexecute API protocol to fetch the redirect target.
+async function resolveGoogleNewsRedirect(googleUrl: string): Promise<string | null> {
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 7000);
+
+    const res = await fetch(googleUrl, {
+      signal: controller.signal,
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+      },
+    });
+
+    clearTimeout(timeoutId);
+    if (!res.ok) return null;
+
+    const html = await res.text();
+    
+    // Extract the data-p attribute which contains the RPC requirements
+    const dataPMatch = html.match(/<c-wiz[^>]+data-p=["']([^"']+)["']/i);
+    if (!dataPMatch) return null;
+
+    const rawData = dataPMatch[1];
+    const decodedData = rawData.replace(/&quot;/g, '"');
+    
+    // Parse the protobuf-like array payload
+    const obj = JSON.parse(decodedData.replace('%.@.', '["garturlreq",'));
+    const reqPayload = [[
+      'Fbv4je', 
+      JSON.stringify([...obj.slice(0, -6), ...obj.slice(-2)]), 
+      'null', 
+      'generic'
+    ]];
+
+    const payload = new URLSearchParams();
+    payload.append('f.req', JSON.stringify([reqPayload]));
+
+    const postRes = await fetch('https://news.google.com/_/DotsSplashUi/data/batchexecute', {
+      method: 'POST',
+      body: payload.toString(),
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36'
+      }
+    });
+
+    if (!postRes.ok) return null;
+
+    const postData = await postRes.text();
+    const cleanJsonStr = postData.replace(")]}'\n", "");
+    const parsedBatch = JSON.parse(cleanJsonStr);
+    
+    const arrayString = parsedBatch[0][2];
+    const articleUrl = JSON.parse(arrayString)[1];
+    
+    return articleUrl;
+  } catch (e) {
+    console.error("resolveGoogleNewsRedirect error:", e);
+    return null;
+  }
+}
 
 // Keep a simple decode attempt for related article URLs (best-effort, not critical)
 function tryDecodeGoogleNewsUrl(googleUrl: string): string {
@@ -320,12 +383,43 @@ function extractMetaValue(html: string, nameOrProperty: string): string | null {
  * Fetch a page (article or publisher homepage) and extract og:image / twitter:image.
  * Returns null on any failure — caller falls through to next pipeline step.
  */
-function fetchOgImage(item: any): string | null {
-  const rawUrl = extractRawImageUrl(item);
-  if (rawUrl) {
-    return sanitizeAndUpgradeImageUrl(rawUrl);
+async function fetchOgImage(pageUrl: string): Promise<string | null> {
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
+
+    const res = await fetch(pageUrl, {
+      signal: controller.signal,
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Cache-Control": "no-cache",
+        "Pragma": "no-cache"
+      },
+    });
+
+    clearTimeout(timeoutId);
+    if (!res.ok) return null;
+
+    const html = await res.text();
+
+    // Priority 1: og:image
+    const ogImage = extractMetaValue(html, "og:image");
+    if (ogImage && !isAdOrSpacerImage(ogImage)) return ogImage;
+
+    // Priority 2: twitter:image
+    const twitterImage = extractMetaValue(html, "twitter:image");
+    if (twitterImage && !isAdOrSpacerImage(twitterImage)) return twitterImage;
+
+    // Priority 3: standard thumbnail
+    const thumbnail = extractMetaValue(html, "thumbnail");
+    if (thumbnail && !isAdOrSpacerImage(thumbnail)) return thumbnail;
+
+    return null;
+  } catch {
+    return null;
   }
-  return null;
 }
 
 export async function fetchNews() {
@@ -343,121 +437,217 @@ export async function fetchNews() {
       }
     });
 
-    const feed = await parser.parseURL(
-      "https://news.google.com/rss?hl=en-US&gl=US&ceid=US:en"
-    );
+    // Feeds list: main feed plus 7 news categories from Google News
+    const FEED_URLS = [
+      "https://news.google.com/rss?hl=en-US&gl=US&ceid=US:en", // main
+      "https://news.google.com/news/rss/headlines/section/topic/WORLD?hl=en-US&gl=US&ceid=US:en",
+      "https://news.google.com/news/rss/headlines/section/topic/BUSINESS?hl=en-US&gl=US&ceid=US:en",
+      "https://news.google.com/news/rss/headlines/section/topic/TECHNOLOGY?hl=en-US&gl=US&ceid=US:en",
+      "https://news.google.com/news/rss/headlines/section/topic/SPORTS?hl=en-US&gl=US&ceid=US:en",
+      "https://news.google.com/news/rss/headlines/section/topic/ENTERTAINMENT?hl=en-US&gl=US&ceid=US:en",
+      "https://news.google.com/news/rss/headlines/section/topic/HEALTH?hl=en-US&gl=US&ceid=US:en",
+      "https://news.google.com/news/rss/headlines/section/topic/SCIENCE?hl=en-US&gl=US&ceid=US:en",
+    ];
 
-    if (!feed.items || feed.items.length === 0) {
-      return { success: false, message: "No articles found in RSS feed" };
+    console.log("[RSS Sync] Fetching multiple category feeds in parallel...");
+    const feedPromises = FEED_URLS.map(async (url) => {
+      try {
+        const feed = await parser.parseURL(url);
+        return feed.items || [];
+      } catch (err) {
+        console.error(`[RSS Sync] Failed to fetch feed ${url}:`, err);
+        return [];
+      }
+    });
+
+    const feedResults = await Promise.all(feedPromises);
+    const allItems = feedResults.flat();
+
+    if (allItems.length === 0) {
+      return { success: false, message: "No articles found in RSS feeds" };
     }
+
+    // Deduplicate items by their Google News link or decoded URL
+    const uniqueItemsMap = new Map<string, any>();
+    for (const item of allItems) {
+      if (item.link) {
+        const decodedUrl = tryDecodeGoogleNewsUrl(item.link);
+        if (!uniqueItemsMap.has(decodedUrl)) {
+          uniqueItemsMap.set(decodedUrl, item);
+        }
+      }
+    }
+    const uniqueItems = Array.from(uniqueItemsMap.values());
+    console.log(`[RSS Sync] Found ${allItems.length} total feed items. Deduplicated to ${uniqueItems.length} unique articles.`);
 
     let upsertCount = 0;
 
-    for (const item of feed.items) {
-      if (!item.link || !item.title) continue;
+    // Process unique articles in parallel batches of 5 to run efficiently without database/network timeout
+    const batchSize = 5;
+    for (let i = 0; i < uniqueItems.length; i += batchSize) {
+      const batch = uniqueItems.slice(i, i + batchSize);
+      await Promise.all(
+        batch.map(async (item) => {
+          if (!item.link || !item.title) return;
 
-      const rawItem = item as any;
-      const title = rawItem.title;
-      let url = rawItem.link;
-      const summary = rawItem.contentSnippet || "";
-      const content = rawItem.content || rawItem.contentSnippet || "";
-      const sourceName = rawItem.source?.text || rawItem.creator || "Google News";
-      const publishedAt = rawItem.pubDate ? new Date(rawItem.pubDate) : new Date();
+          const rawItem = item as any;
+          const title = rawItem.title;
+          let url = tryDecodeGoogleNewsUrl(rawItem.link);
+          const summary = rawItem.contentSnippet || "";
+          const content = rawItem.content || rawItem.contentSnippet || "";
+          const sourceName = rawItem.source?.text || rawItem.creator || "Google News";
+          const publishedAt = rawItem.pubDate ? new Date(rawItem.pubDate) : new Date();
 
-      // Extract specific publisher from suffix mapping
-      let parsedSourceName = sourceName;
-      if (parsedSourceName === "Google News") {
-        const parts = title.split(" - ");
-        if (parts.length > 1) {
-          const lastPart = parts[parts.length - 1].trim();
-          if (
-            lastPart.toLowerCase().includes("breaking") ||
-            lastPart.toLowerCase().includes("latest") ||
-            lastPart.toLowerCase().includes("videos") ||
-            lastPart.toLowerCase().includes("home")
-          ) {
-            if (parts.length > 2) {
-              parsedSourceName = parts[parts.length - 2].trim();
+          // Extract specific publisher from suffix mapping
+          let parsedSourceName = sourceName;
+          if (parsedSourceName === "Google News") {
+            const parts = title.split(" - ");
+            if (parts.length > 1) {
+              const lastPart = parts[parts.length - 1].trim();
+              if (
+                lastPart.toLowerCase().includes("breaking") ||
+                lastPart.toLowerCase().includes("latest") ||
+                lastPart.toLowerCase().includes("videos") ||
+                lastPart.toLowerCase().includes("home")
+              ) {
+                if (parts.length > 2) {
+                  parsedSourceName = parts[parts.length - 2].trim();
+                }
+              } else {
+                parsedSourceName = lastPart;
+              }
             }
-          } else {
-            parsedSourceName = lastPart;
           }
-        }
-      }
 
-      // Check if publisher exists in seeded Source ratings
-      const existingSource = await prisma.source.findUnique({
-        where: { name: parsedSourceName },
-      });
+          // Check if publisher exists in seeded Source ratings
+          const existingSource = await prisma.source.findUnique({
+            where: { name: parsedSourceName },
+          });
 
-      // ─────────────────────────────────────────────────
-      // ZERO-COST CONSENSUS RELATED SOURCES PARSER
-      // ─────────────────────────────────────────────────
-      const relatedSources: { title: string; sourceName: string; url: string }[] = [];
-      const relatedRegex = /<a href="([^"]+)"[^>]*>([^<]+)<\/a>\s*<font[^>]*>([^<]+)<\/font>/g;
-      const parseText = (content || "").replace(/&nbsp;/g, " ");
-      let match;
-      while ((match = relatedRegex.exec(parseText)) !== null) {
-        const itemUrl = match[1];
-        const itemTitle = match[2];
-        const itemSourceName = match[3];
-        relatedSources.push({
-          title: itemTitle.replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&#39;/g, "'").trim(),
-          sourceName: itemSourceName.replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&#39;/g, "'").trim(),
-          url: tryDecodeGoogleNewsUrl(itemUrl),
-        });
-      }
+          // Related sources mapping
+          const relatedSources: { title: string; sourceName: string; url: string }[] = [];
+          const relatedRegex = /<a href="([^"]+)"[^>]*>([^<]+)<\/a>\s*<font[^>]*>([^<]+)<\/font>/g;
+          const parseText = (content || "").replace(/&nbsp;/g, " ");
+          let match;
+          while ((match = relatedRegex.exec(parseText)) !== null) {
+            const itemUrl = match[1];
+            const itemTitle = match[2];
+            const itemSourceName = match[3];
+            relatedSources.push({
+              title: itemTitle.replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&#39;/g, "'").trim(),
+              sourceName: itemSourceName.replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&#39;/g, "'").trim(),
+              url: tryDecodeGoogleNewsUrl(itemUrl),
+            });
+          }
 
-      // ─────────────────────────────────────────────────────────────
-      // ENHANCED IMAGE PIPELINE — RSS XML ONLY (ToS Compliance)
-      // ─────────────────────────────────────────────────────────────
-      let imageUrl: string | null = null;
-      let isLogo = false;
-      let isThematic = false;
-      let imageSource = "none";
+          // Ingestion Image Pipeline
+          let imageUrl: string | null = null;
+          let isLogo = false;
+          let isThematic = false;
+          let imageSource = "none";
 
-      imageUrl = fetchOgImage(rawItem);
-      if (imageUrl) {
-        imageSource = "rss-tag";
-      } else {
-        imageUrl = getDeterministicImage(title);
-        isThematic = true;
-        imageSource = "unsplash-thematic";
-      }
+          const sourceUrl = sourceMap.get(rawItem.link) || null;
+          const sourceDomain = extractDomain(sourceUrl);
 
-      console.log(`[INGESTION] ${imageSource.padEnd(20)} | isThematic:${isThematic} | "${title.substring(0, 55)}"`);
-      console.log(`            Image: ${(imageUrl || 'NULL').substring(0, 80)}`);
+          // STEP 1: Google redirect lookup (Real publisher URL)
+          const realArticleUrl = await resolveGoogleNewsRedirect(rawItem.link);
+          if (realArticleUrl) {
+            url = realArticleUrl;
+            const ogImage = await fetchOgImage(realArticleUrl);
+            if (ogImage) {
+              const sanitized = sanitizeAndUpgradeImageUrl(ogImage);
+              if (sanitized) {
+                imageUrl = sanitized;
+                imageSource = "article-og:image";
+              }
+            }
+          }
 
-      await prisma.article.upsert({
-        where: { url },
-        update: {
-          title,
-          summary,
-          content,
-          imageUrl,
-          isLogo,
-          isThematic,
-          sourceName: parsedSourceName,
-          publishedAt,
-          sourceId: existingSource ? existingSource.id : null,
-          relatedSources: relatedSources as any,
-        },
-        create: {
-          title,
-          url,
-          content,
-          summary,
-          imageUrl,
-          isLogo,
-          isThematic,
-          sourceName: parsedSourceName,
-          publishedAt,
-          sourceId: existingSource ? existingSource.id : null,
-          relatedSources: relatedSources as any,
-        },
-      });
+          // STEP 2: RSS tag parsing fallback
+          if (!imageUrl) {
+            const rawUrl = extractRawImageUrl(rawItem);
+            if (rawUrl) {
+              const sanitized = sanitizeAndUpgradeImageUrl(rawUrl);
+              if (sanitized) {
+                imageUrl = sanitized;
+                imageSource = "rss-tag";
+              }
+            }
+          }
 
-      upsertCount++;
+          // STEP 2.5: Related article image fallback
+          if (!imageUrl && relatedSources.length > 0) {
+            for (const source of relatedSources.slice(0, 3)) {
+              try {
+                const resolvedUrl = await resolveGoogleNewsRedirect(source.url);
+                if (resolvedUrl) {
+                  const ogImage = await fetchOgImage(resolvedUrl);
+                  if (ogImage) {
+                    const sanitized = sanitizeAndUpgradeImageUrl(ogImage);
+                    if (sanitized) {
+                      imageUrl = sanitized;
+                      imageSource = `related-og:image (${source.sourceName})`;
+                      break;
+                    }
+                  }
+                }
+              } catch (e) {
+                // Ignore
+              }
+            }
+          }
+
+          // STEP 3: Publisher homepage backup
+          if (!imageUrl && sourceDomain) {
+            const homepageOg = await fetchOgImage(`https://${sourceDomain}`);
+            if (homepageOg) {
+              const sanitized = sanitizeAndUpgradeImageUrl(homepageOg);
+              if (sanitized) {
+                imageUrl = sanitized;
+                imageSource = "homepage-og:image";
+              }
+            }
+          }
+
+          // STEP 4: Standard thematic placeholder
+          if (!imageUrl) {
+            imageUrl = getDeterministicImage(title);
+            isThematic = true;
+            imageSource = "unsplash-thematic";
+          }
+
+          await prisma.article.upsert({
+            where: { url },
+            update: {
+              title,
+              summary,
+              content,
+              imageUrl,
+              isLogo,
+              isThematic,
+              sourceName: parsedSourceName,
+              publishedAt,
+              sourceId: existingSource ? existingSource.id : null,
+              relatedSources: relatedSources as any,
+            },
+            create: {
+              title,
+              url,
+              content,
+              summary,
+              imageUrl,
+              isLogo,
+              isThematic,
+              sourceName: parsedSourceName,
+              publishedAt,
+              sourceId: existingSource ? existingSource.id : null,
+              relatedSources: relatedSources as any,
+            },
+          });
+
+          upsertCount++;
+        })
+      );
     }
 
     try {

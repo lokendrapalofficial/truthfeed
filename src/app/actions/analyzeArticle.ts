@@ -2,6 +2,7 @@
 
 import { prisma } from "@/lib/db";
 import { groq } from "@/lib/groq";
+import { fetchWikiContext, WikiContext } from "@/lib/wiki";
 import { fetchFactChecks } from "@/app/actions/fetchFactChecks";
 
 export interface GeminiAnalysisResult {
@@ -48,6 +49,9 @@ export async function analyzeArticle(
 
   const promise = (async () => {
     try {
+      const locations = ['LONDON', 'NEW YORK', 'GENEVA', 'SINGAPORE', 'DUBAI', 'BRUSSELS'];
+      const selectedLocation = locations[Math.floor(Math.random() * locations.length)];
+
       // 1. Fetch from DB if details not provided
       const article = await prisma.article.findUnique({
         where: { id: articleId },
@@ -58,34 +62,34 @@ export async function analyzeArticle(
       }
 
       const articleTitle = title || article.title;
+      const articleDesc = description || article.summary || article.content || "";
       const articleRelated = relatedSources || article.relatedSources;
 
-      const parsedRelated: any[] = articleRelated
-        ? (typeof articleRelated === "string" ? JSON.parse(articleRelated) : JSON.parse(JSON.stringify(articleRelated)))
-        : [];
-
-      // 2. Check Caching first
+      // 2. Check Caching first (Backward compatible JSON parser)
       const cachedAnalysis = await prisma.analysis.findUnique({
         where: { articleId },
       });
 
       if (cachedAnalysis) {
         try {
-          if (cachedAnalysis.verification && cachedAnalysis.framingMatrix) {
+          if (cachedAnalysis.verification) {
+            const parsedWiki = cachedAnalysis.wikiContexts
+              ? (typeof cachedAnalysis.wikiContexts === "string"
+                ? JSON.parse(cachedAnalysis.wikiContexts)
+                : cachedAnalysis.wikiContexts) as WikiContext[]
+              : [];
+
             const parsedVerification = typeof cachedAnalysis.verification === "string"
               ? JSON.parse(cachedAnalysis.verification)
               : cachedAnalysis.verification;
 
-            const parsedFramingMatrix = typeof cachedAnalysis.framingMatrix === "string"
-              ? JSON.parse(cachedAnalysis.framingMatrix)
-              : cachedAnalysis.framingMatrix;
-
             return {
               success: true,
               briefing: cachedAnalysis.briefing || "",
+              articleText: cachedAnalysis.articleText || "",
+              wikiContexts: parsedWiki,
               category: cachedAnalysis.category || "World",
               verification: parsedVerification as VerificationScorecardData,
-              framingMatrix: parsedFramingMatrix,
             };
           }
         } catch (cacheError) {
@@ -100,104 +104,169 @@ export async function analyzeArticle(
         console.warn("Using mock briefing compilation because GROQ_API_KEY is not defined.");
         await new Promise((resolve) => setTimeout(resolve, 1500));
 
-        const mockCategory = getBriefingCategory(articleTitle);
-        const mockTlDr = `Factual reports corroborate the events surrounding "${articleTitle.replace(/\s*[-|]\s*[^|]+$/, "")}". Verification audits are tracking publisher coverage angles.`;
-        
-        const mockFramingMatrix = [
-          { outlet: article.sourceName, angle: "Direct reporting and event details" }
+        const mockWiki: WikiContext[] = [
+          {
+            title: article.sourceName,
+            extract: `${article.sourceName} is a major global media organization providing breaking news, coverage analysis, and localized editorial content.`,
+            thumbnailUrl: `https://www.google.com/s2/favicons?domain=wikipedia.org&sz=128`,
+          }
         ];
-        parsedRelated.slice(0, 3).forEach((rel: any) => {
-          mockFramingMatrix.push({
-            outlet: rel.sourceName || rel.source || "Alternative Outlet",
-            angle: "Corroborative event coverage"
-          });
-        });
 
-        let consensusScore = Math.min(5, parsedRelated.length + 1);
-        let confidenceLevel: "High" | "Medium" | "Low" | "Conflicting" = 
-          consensusScore >= 4 ? "High" : (consensusScore >= 2 ? "Medium" : "Low");
+        const mockCategory = getBriefingCategory(articleTitle);
+        
+        const mockQuickBrief = `🚨 ALERT: Conflicting accounts emerge regarding "${articleTitle.replace(/\s*[-|]\s*[^|]+$/, "")}". TruthFeed Intelligence has flagged conflicting data, while regional desks dispute the timeline. Consensus: 2/5 desks.`;
+ 
+        const mockDeepDive = `${selectedLocation} — TruthFeed Intelligence has flagged significant contradictions in coverage regarding "${articleTitle.replace(/\s*[-|]\s*[^|]+$/, "")}". A comparison of reporting outputs reveals diverging timelines and official statements.
+ 
+While ${article.sourceName} reported immediate police confirmation, alternative sources cite a contradiction. Regional desks cite conflicting narratives.
+ 
+TruthFeed's Editorial Desk urges caution when citing these initial releases. The consensus remains LOW at 2/5 sources. We are actively auditing these reports to resolve the discrepancies.`;
 
         const mockVerification: VerificationScorecardData = {
           coreClaim: articleTitle,
-          consensusScore,
-          confidenceLevel,
-          conflictReport: "No significant narrative conflict detected across coverage.",
-          reasoning: `Seeded mock desk audit matches ${parsedRelated.length + 1} corroborated outlets.`,
+          consensusScore: 2,
+          confidenceLevel: "Low",
+          conflictReport: "Conflicting numbers and timelines reported by independent media bureaus.",
+          reasoning: `Diverging reports from ${article.sourceName} and local outlets on scene.`,
           professionalAudit: null
         };
 
+        // Query mock Fact-checks if they match
+        try {
+          const factCheckRes = await fetchFactChecks(articleTitle);
+          if (factCheckRes.success && factCheckRes.reviews && factCheckRes.reviews.length > 0) {
+            const primary = factCheckRes.reviews[0];
+            mockVerification.professionalAudit = {
+              publisherName: primary.publisherName,
+              textualRating: primary.textualRating,
+              reviewUrl: primary.reviewUrl,
+            };
+          }
+        } catch (err) {
+          console.error("Mock factcheck query error:", err);
+        }
+
         const resultPayload = {
-          briefing: mockTlDr,
+          briefing: mockQuickBrief,
+          articleText: mockDeepDive,
+          wikiContexts: mockWiki,
           category: mockCategory,
-          verification: mockVerification,
-          framingMatrix: mockFramingMatrix,
+          verification: mockVerification
         };
 
-        const savedAnalysis = await prisma.analysis.upsert({
+        await prisma.analysis.upsert({
           where: { articleId },
           update: {
-            briefing: mockTlDr,
-            category: mockCategory,
-            verification: JSON.parse(JSON.stringify(mockVerification)),
-            framingMatrix: JSON.parse(JSON.stringify(mockFramingMatrix)),
+            briefing: mockQuickBrief,
+            articleText: mockDeepDive,
+            wikiContexts: JSON.parse(JSON.stringify(mockWiki)),
             claim: articleTitle,
+            category: mockCategory,
+            verification: JSON.parse(JSON.stringify(mockVerification))
           },
           create: {
             articleId,
-            briefing: mockTlDr,
-            category: mockCategory,
-            verification: JSON.parse(JSON.stringify(mockVerification)),
-            framingMatrix: JSON.parse(JSON.stringify(mockFramingMatrix)),
+            briefing: mockQuickBrief,
+            articleText: mockDeepDive,
+            wikiContexts: JSON.parse(JSON.stringify(mockWiki)),
             claim: articleTitle,
+            category: mockCategory,
+            verification: JSON.parse(JSON.stringify(mockVerification))
           },
         });
-
-        if (mockVerification.confidenceLevel === "Conflicting" || mockVerification.confidenceLevel === "Low") {
-          await prisma.conflictAlert.upsert({
-            where: { analysisId: savedAnalysis.id },
-            update: {
-              claim: mockVerification.coreClaim || articleTitle,
-              category: mockCategory,
-            },
-            create: {
-              analysisId: savedAnalysis.id,
-              claim: mockVerification.coreClaim || articleTitle,
-              category: mockCategory,
-            },
-          });
-        }
 
         return { success: true, ...resultPayload };
       }
 
-      // 3. Groq Extraction Call
+      // 3. Groq Extraction Call: Extract 2-3 Entities (Locations, People, Organizations)
+      let entities: string[] = [];
+      try {
+        const entityResponse = await groq.chat.completions.create({
+          model: "llama-3.3-70b-versatile",
+          messages: [
+            {
+              role: "system",
+              content: "You are a precise data extractor. Extract 2-3 key entities (Locations, People, Organizations) mentioned in this news headline and description. Return ONLY a JSON object with one key 'entities' containing an array of strings. Do not include markdown code block formatting in your response."
+            },
+            {
+              role: "user",
+              content: `Headline: "${articleTitle}"\nDescription: "${articleDesc}"`
+            }
+          ],
+          response_format: { type: "json_object" },
+          temperature: 0.1,
+        });
+
+        const entityContent = entityResponse.choices[0]?.message?.content;
+        if (entityContent) {
+          const parsed = JSON.parse(entityContent);
+          if (Array.isArray(parsed.entities)) {
+            entities = parsed.entities;
+          }
+        }
+      } catch (entityError) {
+        console.error("Error extracting entities with Groq:", entityError);
+        entities = [article.sourceName];
+      }
+
+      if (entities.length === 0) {
+        entities = [article.sourceName];
+      }
+
+      // 4. Query Wikipedia summary context for these entities
+      const wikiContexts = await fetchWikiContext(entities);
+
+      // 5. Compile the Morning Briefing using Groq
+      const parsedRelated: any[] = articleRelated
+        ? (typeof articleRelated === "string" ? JSON.parse(articleRelated) : JSON.parse(JSON.stringify(articleRelated)))
+        : [];
+      
       const auditResponse = await groq.chat.completions.create({
         model: "llama-3.3-70b-versatile",
         messages: [
           {
             role: "system",
-            content: `You are an elite Media Intelligence Analyst. Your task is to analyze how different news outlets are framing the exact same event based on their headlines. 
-Output a strict JSON object with two keys:
-1. 'tl_dr': A 2-sentence, plain-English, purely factual summary of the event. No fluff.
-2. 'framingMatrix': An array of objects for each corroborating source. Each object must have: 
-   - 'outlet': The name of the publisher (e.g., 'CNBC').
-   - 'angle': A short, 3-5 word description of what this specific outlet is focusing on (e.g., 'Macro market impact', 'Specific stock movers', 'Geopolitical tensions').
-
-Example Output:
-{
-  'tl_dr': 'S&P 500 futures fell following a 9-day win streak as hopes for a quick US-Iran deal faded.',
-  'framingMatrix': [
-    {'outlet': 'CNBC', 'angle': 'Macro market impact & Middle East tensions'},
-    {'outlet': 'Yahoo Finance', 'angle': 'Fading US-Iran deal hopes'},
-    {'outlet': 'Investor\'s Business Daily', 'angle': 'Specific stock movers (Palo Alto, Marvell)'}
-  ]
-}`
+            content: `SYSTEM ROLE: You are Grok, an elite intelligence analyst working at TruthFeed's verification desk. Your job is to synthesize cross-referenced news headlines into punchy, urgent intelligence briefings that explicitly highlight conflicts, discrepancies, and verification status.
+ 
+ WRITING STYLE RULES:
+ - Use URGENT, punchy language. Lead with the verification status or conflict.
+ - Start Quick Brief with '🚨 ALERT:' if conflicting, or '✅ VERIFIED:' if high consensus.
+ - Explicitly call out discrepancies in timelines, numbers, or official statements.
+ - Use location datelines for Deep Dive (e.g., 'LONDON — ', 'NEW YORK — ').
+ - Sound like an intelligence cable, NOT a neutral news summary.
+ - Be dramatic but factual. Highlight what is DISPUTED or UNCONFIRMED.
+ 
+ BRAND IDENTITY RULES:
+ - You work for 'TruthFeed'. 
+ - NEVER use generic terms like 'Desk verification', 'Editorial Desks', or 'Analysts'.
+ - ALWAYS use branded terms like 'TruthFeed', 'TruthFeed Intelligence', 'TruthFeed's Editorial Desk', or 'We at TruthFeed'.
+ - Example (Bad): 'Desk verification has flagged discrepancies...'
+ - Example (Good): 'TruthFeed Intelligence has flagged discrepancies...'
+ - Example (Bad): 'Editorial Desks urge caution...'
+ - Example (Good): 'TruthFeed's Editorial Desk urges caution...'
+ - Example (Good): 'We at TruthFeed checked 5 sources and found...'
+ 
+ OUTPUT JSON FORMAT:
+ {
+   'quickBrief': 'Start with 🚨 ALERT or ✅ VERIFIED. 2-3 sentences max. Explicitly state the consensus score (e.g., \"Consensus: 5/5 desks\" or \"Consensus: 2/5 - conflicting reports\"). Highlight the main conflict or confirmation.',
+   
+   'deepDive': 'Structure exactly like this:
+   
+   ${selectedLocation} — TruthFeed Intelligence has flagged [specific issue] regarding \"[headline]\". A comparison of reporting outputs reveals [specific discrepancies].
+   
+   While [Source A] reported [claim], [Source B] cites [contradiction]. 
+   
+   TruthFeed\'s Editorial Desk urges caution when citing these initial releases. The consensus remains [HIGH/MEDIUM/LOW] at [X]/5 sources. We are actively auditing these reports to resolve the discrepancies.'
+ }`
           },
           {
             role: "user",
             content: `Breaking Headline: "${articleTitle}"
 Related coverage headlines:
-${parsedRelated.length > 0 ? parsedRelated.map(s => `- ${s.title} (${s.sourceName || s.source || 'Unknown Publisher'})`).join("\n") : "- No alternative coverage reported yet."}`
+${parsedRelated.length > 0 ? parsedRelated.map(s => `- ${s.title} (${s.sourceName})`).join("\n") : "- No alternative coverage reported yet."}
+
+Wikipedia Entity Context:
+${wikiContexts.length > 0 ? wikiContexts.map(w => `Entity: ${w.title}\nBackground: ${w.extract}`).join("\n\n") : "No historical entity background returned from Wikipedia."}`
           }
         ],
         response_format: { type: "json_object" },
@@ -206,34 +275,70 @@ ${parsedRelated.length > 0 ? parsedRelated.map(s => `- ${s.title} (${s.sourceNam
 
       const briefingContent = auditResponse.choices[0]?.message?.content;
       if (!briefingContent) {
-        return { success: false, error: "Failed to compile Analysis from Groq" };
+        return { success: false, error: "Failed to compile Briefing text from Groq" };
       }
 
       let parsedBriefing: any;
       try {
         parsedBriefing = JSON.parse(briefingContent);
       } catch (parseError) {
-        console.error("Error parsing Groq analysis JSON:", parseError);
-        return { success: false, error: "Failed to parse Groq analysis response JSON" };
+        console.error("Error parsing Groq briefing JSON:", parseError);
+        return { success: false, error: "Failed to parse Groq briefing response JSON" };
       }
 
-      const category = getBriefingCategory(articleTitle);
-      const tl_dr = parsedBriefing.tl_dr || "";
-      const framingMatrix = parsedBriefing.framingMatrix || [];
+      const category = parsedBriefing.category || getBriefingCategory(articleTitle);
+      const quickBrief = parsedBriefing.quickBrief || "";
+      let deepDive = parsedBriefing.deepDive || "";
 
-      // Calculate consensus score & confidence level programmatically
-      let consensusScore = Math.min(5, parsedRelated.length + 1);
+      // Post-processing safeguard: replace [LOCATION] with selectedLocation if LLM didn't replace it
+      if (deepDive.includes("[LOCATION]")) {
+        deepDive = deepDive.replace("[LOCATION]", selectedLocation);
+      }
+
+      // Reconstruct verification data from briefing prose
+      let consensusScore = 3;
+      const scoreMatch = (quickBrief + " " + deepDive).match(/(?:Consensus:\s*|at\s*|rating:\s*)(\d+)\/5/i);
+      if (scoreMatch) {
+        consensusScore = parseInt(scoreMatch[1], 10);
+      } else if (quickBrief.includes("5/5")) {
+        consensusScore = 5;
+      } else if (quickBrief.includes("4/5")) {
+        consensusScore = 4;
+      } else if (quickBrief.includes("2/5")) {
+        consensusScore = 2;
+      } else if (quickBrief.includes("1/5")) {
+        consensusScore = 1;
+      }
+
       let confidenceLevel: "High" | "Medium" | "Low" | "Conflicting" = "Medium";
-      if (consensusScore >= 4) {
+      const combinedLower = (quickBrief + " " + deepDive).toLowerCase();
+      if (quickBrief.includes("🚨 ALERT") || combinedLower.includes("conflict") || combinedLower.includes("dispute")) {
+        confidenceLevel = "Conflicting";
+      } else if (combinedLower.includes("high") || quickBrief.includes("✅ VERIFIED")) {
         confidenceLevel = "High";
-      } else if (consensusScore <= 2) {
+      } else if (combinedLower.includes("low")) {
         confidenceLevel = "Low";
       }
 
-      // Query Google Fact Check API for coreClaim
+      const conflictReport = parsedBriefing.verification?.conflictReport || 
+        (confidenceLevel === "Conflicting" ? "Discrepancies and conflicting accounts flagged by the Desk." : "Consensus established across reported sources.");
+
+      const reasoning = parsedBriefing.verification?.reasoning || 
+        `Synthesized desk reports yield a ${confidenceLevel.toLowerCase()} consensus score of ${consensusScore}/5.`;
+
+      const verification: VerificationScorecardData = {
+        coreClaim: parsedBriefing.verification?.coreClaim || articleTitle,
+        consensusScore,
+        confidenceLevel,
+        conflictReport,
+        reasoning,
+        professionalAudit: parsedBriefing.verification?.professionalAudit || null
+      };
+
+      // 6. Query Google Fact Check API for coreClaim
       let professionalAudit = null;
       try {
-        const factCheckRes = await fetchFactChecks(articleTitle);
+        const factCheckRes = await fetchFactChecks(verification.coreClaim || articleTitle);
         if (factCheckRes.success && factCheckRes.reviews && factCheckRes.reviews.length > 0) {
           const primary = factCheckRes.reviews[0];
           professionalAudit = {
@@ -241,76 +346,42 @@ ${parsedRelated.length > 0 ? parsedRelated.map(s => `- ${s.title} (${s.sourceNam
             textualRating: primary.textualRating,
             reviewUrl: primary.reviewUrl,
           };
-          
-          const ratingLower = (primary.textualRating || "").toLowerCase();
-          if (ratingLower.includes("false") || ratingLower.includes("misleading") || ratingLower.includes("mixed")) {
-            confidenceLevel = "Conflicting";
-            consensusScore = Math.min(consensusScore, 2);
-          } else if (ratingLower.includes("true") || ratingLower.includes("correct")) {
-            confidenceLevel = "High";
-            consensusScore = Math.max(consensusScore, 4);
-          }
         }
       } catch (fcErr) {
         console.error("Error retrieving professional fact checks:", fcErr);
       }
 
-      const conflictReport = confidenceLevel === "Conflicting"
-        ? "Narrative discrepancies and check rating flagged by external audit."
-        : "No significant narrative conflict detected across coverage.";
-
-      const reasoning = `Based on a cross-reference of ${parsedRelated.length + 1} outlets reporting on this event.`;
-
-      const verification: VerificationScorecardData = {
-        coreClaim: articleTitle,
-        consensusScore,
-        confidenceLevel,
-        conflictReport,
-        reasoning,
-        professionalAudit
-      };
+      verification.professionalAudit = professionalAudit;
 
       const resultPayload = {
-        briefing: tl_dr,
+        briefing: quickBrief,
+        articleText: deepDive,
+        wikiContexts,
         category,
-        verification,
-        framingMatrix,
+        verification
       };
 
       // Cache the briefing payload in the database Analysis model
-      const savedAnalysis = await prisma.analysis.upsert({
+      await prisma.analysis.upsert({
         where: { articleId },
         update: {
-          briefing: tl_dr,
-          category,
-          verification: JSON.parse(JSON.stringify(verification)),
-          framingMatrix: JSON.parse(JSON.stringify(framingMatrix)),
+          briefing: quickBrief,
+          articleText: deepDive,
+          wikiContexts: JSON.parse(JSON.stringify(wikiContexts)),
           claim: articleTitle,
+          category,
+          verification: JSON.parse(JSON.stringify(verification))
         },
         create: {
           articleId,
-          briefing: tl_dr,
-          category,
-          verification: JSON.parse(JSON.stringify(verification)),
-          framingMatrix: JSON.parse(JSON.stringify(framingMatrix)),
+          briefing: quickBrief,
+          articleText: deepDive,
+          wikiContexts: JSON.parse(JSON.stringify(wikiContexts)),
           claim: articleTitle,
+          category,
+          verification: JSON.parse(JSON.stringify(verification))
         },
       });
-
-      if (verification.confidenceLevel === "Conflicting" || verification.confidenceLevel === "Low") {
-        await prisma.conflictAlert.upsert({
-          where: { analysisId: savedAnalysis.id },
-          update: {
-            claim: verification.coreClaim || articleTitle,
-            category,
-          },
-          create: {
-            analysisId: savedAnalysis.id,
-            claim: verification.coreClaim || articleTitle,
-            category,
-          },
-        });
-      }
 
       return { success: true, ...resultPayload };
     } catch (error: any) {

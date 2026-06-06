@@ -1,101 +1,568 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useTransition, useEffect, useRef } from "react";
 import Link from "next/link";
-import Navbar from "@/components/Navbar";
-import CleanCard from "@/components/CleanCard";
+import { Search, RefreshCw, Sun, Moon, LayoutGrid, List } from "lucide-react";
+import { createClientComponentClient } from "@/lib/supabase";
+import { useTheme } from "next-themes";
+import { useRouter } from "next/navigation";
+import AuthModal from "@/components/AuthModal";
+import UserMenu from "@/components/UserMenu";
+import { fetchNews } from "@/app/actions/fetchNews";
+import { motion } from "framer-motion";
 import BackToTop from "@/components/BackToTop";
+import TransparencyCard from "@/components/TransparencyCard";
+import NewsImage from "@/components/NewsImage";
+import { formatSmartDate, getArticleCategory } from "@/lib/utils";
+
+interface SourceData {
+  id: string;
+  name: string;
+  bias: string;
+  credibility: string;
+  description?: string | null;
+}
 
 interface HomepageClientProps {
   initialArticles: any[];
+  initialSources: SourceData[];
 }
 
+const CATEGORIES = [
+  { id: "foryou", label: "For You" },
+  { id: "top", label: "Top Stories" },
+  { id: "world", label: "World" },
+  { id: "business", label: "Business" },
+  { id: "technology", label: "Technology" },
+  { id: "sports", label: "Sports" },
+  { id: "entertainment", label: "Entertainment" },
+  { id: "health", label: "Health" },
+  { id: "science", label: "Science" },
+];
+
+const getConsensusScore = (article: any) => {
+  if (article.analysis?.verification?.consensusScore !== undefined && article.analysis?.verification?.consensusScore !== null) {
+    return article.analysis.verification.consensusScore;
+  }
+  const factChecks = article.factChecks || [];
+  if (factChecks.some((fc: any) => fc.rating === "TRUE")) return 5;
+  if (article.source?.credibility === "VERY_HIGH") return 5;
+  if (article.source?.credibility === "HIGH") return 4;
+  return null;
+};
+
+const isVerified = (article: any) => {
+  return article.factChecks?.some((fc: any) => fc.rating === "TRUE") ||
+         article.source?.credibility === "VERY_HIGH" ||
+         article.source?.credibility === "HIGH" ||
+         article.analysis?.verification?.confidenceLevel === "High" ||
+         article.analysis?.verification?.confidenceLevel === "HIGH";
+};
+
+const isConflicting = (article: any) => {
+  return article.factChecks?.some((fc: any) => fc.rating === "FALSE" || fc.rating === "MIXED") ||
+         article.source?.credibility === "LOW" ||
+         article.source?.credibility === "VERY_LOW" ||
+         article.analysis?.verification?.confidenceLevel === "Conflicting" ||
+         article.analysis?.verification?.confidenceLevel === "CONFLICTING" ||
+         article.analysis?.verification?.confidenceLevel === "Low";
+};
+
 export default function HomepageClient({ initialArticles }: HomepageClientProps) {
+  const [user, setUser] = useState<any>(null);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const supabase = createClientComponentClient();
+  const router = useRouter();
+
+  useEffect(() => {
+    async function getSession() {
+      const { data: { session } } = await supabase.auth.getSession();
+      setUser(session?.user ?? null);
+    }
+    getSession();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [supabase]);
+
+  const { resolvedTheme, setTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [activeTab, setActiveTab] = useState("all");
+  const [activeCategory, setActiveCategory] = useState("foryou");
+  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+  const [isPending, startTransition] = useTransition();
+  const [refreshMessage, setRefreshMessage] = useState<string | null>(null);
+  useEffect(() => {
+    setMounted(true);
+    const savedView = localStorage.getItem("truthfeed-viewmode");
+    if (savedView === "grid" || savedView === "list") {
+      setViewMode(savedView);
+    }
+  }, []);
+
+  const handleViewModeChange = (mode: "grid" | "list") => {
+    setViewMode(mode);
+    localStorage.setItem("truthfeed-viewmode", mode);
+  };
+
+  const handleRefresh = () => {
+    startTransition(async () => {
+      setRefreshMessage("Syncing feed...");
+      const result = await fetchNews();
+      if (result.success) {
+        setRefreshMessage(`Synced ${result.count} articles`);
+        setTimeout(() => setRefreshMessage(null), 3000);
+      } else {
+        setRefreshMessage(`Sync failed: ${result.error || result.message}`);
+        setTimeout(() => setRefreshMessage(null), 4000);
+      }
+    });
+  };
+
+  const allArticles = useMemo(() => {
+    return initialArticles.map((art) => ({
+      id: art.id,
+      title: art.title,
+      url: art.url,
+      content: art.content,
+      summary: art.summary || art.content || "",
+      imageUrl: art.imageUrl,
+      isLogo: art.isLogo,
+      isThematic: art.isThematic,
+      sourceName: art.sourceName,
+      publishedAt: art.publishedAt,
+      factChecks: art.factChecks || [],
+      source: art.source,
+      analysis: art.analysis,
+    }));
+  }, [initialArticles]);
 
   const filteredArticles = useMemo(() => {
-    return initialArticles.filter((article) => {
-      // 1. Search filter (by title or sourceName)
+    let result = allArticles.filter((article) => {
+      // 1. Search Query Match
       const matchesSearch =
         article.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        article.summary.toLowerCase().includes(searchQuery.toLowerCase()) ||
         article.sourceName.toLowerCase().includes(searchQuery.toLowerCase());
       if (!matchesSearch) return false;
 
-      // 2. Tab filter (optional: fact-checks)
-      if (activeTab === "fact-checks") {
-        const hasFactChecks = article.factChecks && article.factChecks.length > 0;
-        if (!hasFactChecks) return false;
+      // 2. Category Match
+      if (activeCategory !== "top" && activeCategory !== "foryou") {
+        const cat = getArticleCategory(article.title, article.summary);
+        if (cat !== activeCategory) return false;
       }
 
       return true;
     });
-  }, [initialArticles, searchQuery, activeTab]);
+
+    // Mimic algorithmic feed personalization for "For You"
+    if (activeCategory === "foryou") {
+      result = [...result].sort((a, b) => {
+        const aVerified = isVerified(a) ? 1 : 0;
+        const bVerified = isVerified(b) ? 1 : 0;
+        if (aVerified !== bVerified) return bVerified - aVerified;
+
+        const aScore = getConsensusScore(a) || 0;
+        const bScore = getConsensusScore(b) || 0;
+        if (aScore !== bScore) return bScore - aScore;
+
+        return new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime();
+      });
+    }
+
+    return result;
+  }, [allArticles, searchQuery, activeCategory]);
+
+  const trendingVerified = useMemo(() => {
+    return allArticles
+      .filter((art) => isVerified(art))
+      .slice(0, 5);
+  }, [allArticles]);
+
+  const heroArticle = useMemo(() => {
+    return filteredArticles[0] || null;
+  }, [filteredArticles]);
+
+  const stackArticles = useMemo(() => {
+    return filteredArticles.slice(1, 4);
+  }, [filteredArticles]);
+
+  const feedArticles = useMemo(() => {
+    return filteredArticles.slice(4);
+  }, [filteredArticles]);
+
+  const heroColSpan = stackArticles.length > 0 ? "lg:col-span-8" : "lg:col-span-12";
 
   return (
-    <div className="flex flex-col min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans antialiased transition-colors duration-300">
+    <div className="flex flex-col min-h-screen bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 font-sans antialiased transition-colors duration-300">
+      
       {/* Navigation Header */}
-      <Navbar
-        searchQuery={searchQuery}
-        setSearchQuery={setSearchQuery}
-        activeTab={activeTab}
-        setActiveTab={setActiveTab}
-      />
+      <header className="sticky top-0 z-50 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/95 backdrop-blur-sm transition-colors duration-300">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6">
+          <div className="flex h-16 items-center justify-between gap-4">
+            
+            {/* Left: TruthFeed Logo */}
+            <div
+              className="cursor-pointer flex items-center gap-1.5 select-none"
+              onClick={() => {
+                setActiveCategory("foryou");
+                setSearchQuery("");
+              }}
+            >
+              <div className="flex h-7 w-7 items-center justify-center rounded bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 font-bold text-sm tracking-tight transition-colors duration-300">
+                T
+              </div>
+              <span className="text-xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
+                TruthFeed
+              </span>
+            </div>
 
-      {/* Main Core Content Feed */}
-      <main className="flex-1 w-full max-w-7xl mx-auto px-4 py-8">
-        {filteredArticles.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {filteredArticles.map((article) => {
-              // Extract unique sources for the CleanCard
-              const sourcesList = [
-                article.sourceName,
-                ...(Array.isArray(article.relatedSources)
-                  ? (article.relatedSources as any[]).map((s) => s.sourceName)
-                  : []),
-              ].filter(Boolean);
-              const uniqueSources = Array.from(new Set(sourcesList));
+            {/* Center: Rounded Search Bar */}
+            <div className="flex-1 max-w-xl relative group mx-2">
+              <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none text-slate-400 group-focus-within:text-slate-700 dark:group-focus-within:text-slate-350 transition-colors">
+                <Search className="h-4 w-4" />
+              </div>
+              <input
+                type="text"
+                placeholder="Search for topics, sources and claims"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full h-10 pl-10 pr-4 rounded-full bg-slate-100 dark:bg-slate-800 text-sm text-slate-900 dark:text-slate-100 placeholder-slate-500 dark:placeholder-slate-400 border border-transparent dark:border-slate-750 focus:border-slate-200 dark:focus:border-slate-650 focus:bg-white dark:focus:bg-slate-900 outline-none transition-all duration-300"
+              />
+            </div>
 
-              return (
-                <Link
-                  key={article.id}
-                  href={`/article/${article.id}`}
-                  className="block h-full"
+            {/* Right: Profile Actions / Sync Trigger */}
+            <div className="flex items-center gap-3">
+              <button
+                onClick={handleRefresh}
+                disabled={isPending}
+                className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 disabled:text-slate-300 transition-colors cursor-pointer"
+                title="Sync News Feed"
+              >
+                <RefreshCw className={`h-4.5 w-4.5 ${isPending ? "animate-spin" : ""}`} />
+              </button>
+              
+              <button
+                onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
+                className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 transition-colors cursor-pointer"
+                title="Toggle theme"
+              >
+                {mounted && resolvedTheme === "dark" ? (
+                  <Sun className="h-4.5 w-4.5" />
+                ) : (
+                  <Moon className="h-4.5 w-4.5" />
+                )}
+              </button>
+
+              {user ? (
+                <UserMenu user={user} onSignOut={() => { setUser(null); router.refresh(); }} />
+              ) : (
+                <button
+                  onClick={() => setIsAuthModalOpen(true)}
+                  className="flex items-center gap-1.5 px-3.5 h-9 rounded-full bg-slate-100 dark:bg-slate-850 hover:bg-slate-200 dark:hover:bg-slate-750 text-slate-705 dark:text-slate-300 font-bold text-[10px] uppercase tracking-wider cursor-pointer border border-slate-250 dark:border-slate-850 transition-colors shadow-sm"
+                  title="Sign In"
                 >
-                  <CleanCard
-                    title={article.title}
-                    imageUrl={article.imageUrl}
-                    publishedAt={new Date(article.publishedAt)}
-                    sources={uniqueSources}
-                    tl_dr={article.analysis?.briefing || null}
-                  />
-                </Link>
+                  <span>Sign In</span>
+                </button>
+              )}
+            </div>
+
+          </div>
+        </div>
+      </header>
+
+      {/* Sticky Category Ribbon */}
+      <div className="sticky top-16 z-40 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-b border-slate-200 dark:border-slate-700 transition-colors duration-300">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 flex items-center justify-between">
+          <div className="flex items-center gap-2 overflow-x-auto py-2.5 no-scrollbar flex-1 mr-4">
+            {CATEGORIES.map((cat) => {
+              const isActive = activeCategory === cat.id;
+              return (
+                <button
+                  key={cat.id}
+                  onClick={() => setActiveCategory(cat.id)}
+                  className={`px-4 py-1.5 text-xs font-semibold tracking-wide whitespace-nowrap rounded-full transition-all cursor-pointer ${
+                    isActive
+                      ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900"
+                      : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-205 hover:bg-slate-100 dark:hover:bg-slate-800"
+                  }`}
+                >
+                  {cat.label}
+                </button>
               );
             })}
           </div>
-        ) : (
-          /* Empty State */
-          <div className="text-center py-16 px-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl max-w-md mx-auto mt-12 transition-colors duration-300">
-            <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">
-              No articles found
-            </h3>
-            <p className="text-slate-500 dark:text-slate-400 text-sm mt-1.5 leading-relaxed">
-              We couldn't find any articles matching your search query or criteria.
-            </p>
+
+          {/* Grid/List View Mode Toggler */}
+          <div className="flex items-center gap-1 shrink-0 border-l border-slate-200 dark:border-slate-800 pl-3 py-1.5">
+            <button
+              onClick={() => handleViewModeChange("grid")}
+              className={`p-1.5 rounded transition-colors cursor-pointer ${
+                viewMode === "grid"
+                  ? "bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+                  : "text-slate-400 dark:text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-850 hover:text-slate-650 dark:hover:text-slate-350"
+              }`}
+              title="Grid View"
+            >
+              <LayoutGrid className="h-4.5 w-4.5" />
+            </button>
+            <button
+              onClick={() => handleViewModeChange("list")}
+              className={`p-1.5 rounded transition-colors cursor-pointer ${
+                viewMode === "list"
+                  ? "bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+                  : "text-slate-400 dark:text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-855 hover:text-slate-650 dark:hover:text-slate-350"
+              }`}
+              title="List View"
+            >
+              <List className="h-4.5 w-4.5" />
+            </button>
           </div>
-        )}
+        </div>
+      </div>
+
+      {/* Main Core Content Feed */}
+      <main className="flex-1 w-full">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
+          
+          {/* Sync message banners */}
+          {refreshMessage && (
+            <div className="bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-xs px-4 py-2 rounded-lg text-center font-medium animate-pulse mb-6">
+              {refreshMessage}
+            </div>
+          )}
+
+          {filteredArticles.length > 0 ? (
+            <div className="grid grid-cols-1 xl:grid-cols-12 gap-8">
+              
+              {/* Left 9 Columns - Content */}
+              <div className="xl:col-span-9 space-y-10">
+                
+                {/* ── TOP STORIES ── Featured Hero + Sidebar Grid */}
+                <div className="pb-8 border-b border-slate-200 dark:border-slate-800/80">
+
+                  {/* Section Header */}
+                  <div className="flex items-center justify-between mb-6">
+                    <h2 className="text-xl font-bold tracking-tight text-slate-900 dark:text-slate-100 flex items-center gap-2.5">
+                      <span className="h-5 w-1 bg-indigo-500 rounded-full shrink-0" />
+                      Top Stories
+                    </h2>
+                    <span className="text-[10px] font-bold uppercase tracking-widest bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-800/50 px-2.5 py-1 rounded-full">
+                      Live Feed
+                    </span>
+                  </div>
+
+                  {/* 3-column grid: hero (2 cols) + sidebar (1 col) */}
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+                    {/* ── LEFT: Featured Hero (spans 2 cols) ── */}
+                    {heroArticle && (
+                      <motion.div
+                        whileHover={{ y: -3 }}
+                        transition={{ duration: 0.2 }}
+                        className="lg:col-span-2"
+                      >
+                        <Link href={`/article/${heroArticle.id}`} className="group block h-full">
+                          <div className="h-full flex flex-col bg-gradient-to-br from-slate-50 to-white dark:from-slate-800/60 dark:to-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl overflow-hidden hover:border-indigo-200 dark:hover:border-indigo-700 hover:shadow-lg transition-all duration-300">
+
+                            {/* Hero Image */}
+                            <div className="aspect-[16/8] w-full overflow-hidden bg-slate-100 dark:bg-slate-800 relative">
+                              <NewsImage
+                                url={heroArticle.url}
+                                title={heroArticle.title}
+                                sourceName={heroArticle.sourceName}
+                                imageUrl={heroArticle.imageUrl}
+                                isLogo={heroArticle.isLogo}
+                                isThematic={heroArticle.isThematic}
+                                className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                              />
+                              {/* Category overlay chip */}
+                              <div className="absolute top-3 left-3">
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-300 bg-white/90 dark:bg-slate-900/90 backdrop-blur-sm border border-indigo-100 dark:border-indigo-800 px-2 py-0.5 rounded-full">
+                                  {(heroArticle.analysis?.category || getArticleCategory(heroArticle.title, heroArticle.summary))}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Card Body */}
+                            <div className="flex flex-col flex-1 p-5 gap-3">
+                              <h3 className="text-2xl md:text-3xl font-serif font-extrabold text-slate-900 dark:text-slate-100 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 leading-tight transition-colors">
+                                {heroArticle.title}
+                              </h3>
+
+                              {heroArticle.analysis?.briefing && (
+                                <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed line-clamp-2 font-sans">
+                                  {heroArticle.analysis.briefing}
+                                </p>
+                              )}
+
+                              {/* Footer */}
+                              <div className="mt-auto pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                                <div className="flex items-center gap-2 text-xs font-mono text-slate-500 dark:text-slate-400">
+                                  <span className="font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wide">{heroArticle.sourceName}</span>
+                                  <span>·</span>
+                                  <div className="flex items-center gap-1">
+                                    {formatSmartDate(heroArticle.publishedAt).showRedDot && (
+                                      <span className="animate-pulse bg-red-500 rounded-full h-1.5 w-1.5 inline-block shrink-0" />
+                                    )}
+                                    <span>{formatSmartDate(heroArticle.publishedAt).text}</span>
+                                  </div>
+                                  {isVerified(heroArticle) && (
+                                    <span className="text-emerald-600 dark:text-emerald-400 font-semibold">✅ Verified</span>
+                                  )}
+                                  {isConflicting(heroArticle) && (
+                                    <span className="text-rose-600 dark:text-rose-400 font-semibold">⚠️ Conflicting</span>
+                                  )}
+                                </div>
+                                <span className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 group-hover:text-indigo-800 dark:group-hover:text-indigo-300 transition-colors flex items-center gap-1 shrink-0">
+                                  Read Analysis <span aria-hidden>→</span>
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        </Link>
+                      </motion.div>
+                    )}
+
+                    {/* ── RIGHT: Sidebar stack of 3 secondary stories ── */}
+                    {stackArticles.length > 0 && (
+                      <div className="flex flex-col gap-3">
+                        {stackArticles.map((article) => {
+                          const smartDate = formatSmartDate(article.publishedAt);
+                          return (
+                            <Link
+                              key={article.id}
+                              href={`/article/${article.id}`}
+                              className="group flex flex-col justify-between bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-xl p-4 hover:border-slate-300 dark:hover:border-slate-600 hover:shadow-md transition-all duration-200 min-h-[110px]"
+                            >
+                              {/* Top meta row */}
+                              <div className="flex items-center gap-1.5 flex-wrap mb-2">
+                                <span className="text-[9px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">
+                                  {(article.analysis?.category || getArticleCategory(article.title, article.summary))}
+                                </span>
+                                {isVerified(article) && (
+                                  <span className="text-[9px] bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-800/50 px-1.5 py-0.5 rounded-full font-semibold">
+                                    🟢 Verified
+                                  </span>
+                                )}
+                                {isConflicting(article) && (
+                                  <span className="text-[9px] bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-400 border border-rose-100 dark:border-rose-800/50 px-1.5 py-0.5 rounded-full font-semibold">
+                                    ⚠️ Conflict
+                                  </span>
+                                )}
+                                <span className="text-[9px] text-slate-400 dark:text-slate-500 ml-auto shrink-0 flex items-center gap-0.5">
+                                  {smartDate.showRedDot && (
+                                    <span className="animate-pulse bg-red-500 rounded-full h-1 w-1 inline-block shrink-0" />
+                                  )}
+                                  {smartDate.text}
+                                </span>
+                              </div>
+
+                              {/* Headline */}
+                              <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 line-clamp-2 leading-snug transition-colors flex-1">
+                                {article.title}
+                              </h3>
+
+                              {/* Source footer */}
+                              <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500 mt-2">
+                                {article.sourceName}
+                              </div>
+                            </Link>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* High Density Main Feed (Below the fold) */}
+                <section className="space-y-6">
+                  <div className="border-b border-slate-200 dark:border-slate-800 pb-3 flex justify-between items-center">
+                    <h2 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
+                      Latest Updates
+                    </h2>
+                  </div>
+
+                  {feedArticles.length > 0 ? (
+                    <div className={viewMode === "grid" ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" : "flex flex-col gap-4 max-w-3xl"}>
+                      {feedArticles.map((article) => (
+                        <TransparencyCard key={article.id} article={article} viewMode={viewMode} />
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-slate-400 dark:text-slate-550 italic py-6">
+                      No additional articles match your filter preferences.
+                    </p>
+                  )}
+                </section>
+
+              </div>
+
+              {/* Sticky Sidebar (xl:col-span-3) */}
+              <aside className="xl:col-span-3 hidden xl:block sticky top-28 self-start max-h-[calc(100vh-9rem)] overflow-y-auto no-scrollbar pr-1">
+                
+                {/* Trending Verifications */}
+                <div className="bg-slate-50 dark:bg-slate-900/50 rounded-xl p-4 border border-slate-200 dark:border-slate-800">
+                  <h3 className="font-extrabold text-sm uppercase tracking-wider text-slate-900 dark:text-slate-100 mb-3 pb-2 border-b border-slate-200 dark:border-slate-800">
+                    Trending 📈
+                  </h3>
+                  <div className="flex flex-col gap-3">
+                    {trendingVerified.length > 0 ? (
+                      trendingVerified.map((art, index) => (
+                        <div key={art.id} className="flex gap-3 py-2 border-b border-slate-100 dark:border-slate-800/55 last:border-0">
+                          <span className="text-xl font-extrabold text-slate-305 dark:text-slate-700 w-6 text-right shrink-0">
+                            {index + 1}
+                          </span>
+                          <div className="flex-1 min-w-0">
+                            <Link href={`/article/${art.id}`} className="font-semibold text-sm text-slate-800 dark:text-slate-200 hover:text-blue-600 dark:hover:text-blue-400 line-clamp-2 transition-colors">
+                              {art.title}
+                            </Link>
+                            <span className="text-[10px] text-slate-400 dark:text-slate-500 font-mono mt-1 block">
+                              {art.sourceName} • {formatSmartDate(art.publishedAt).text}
+                            </span>
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-xs text-slate-400 italic">No verified stories trending today.</p>
+                    )}
+                  </div>
+                </div>
+
+              </aside>
+
+            </div>
+          ) : (
+            /* Empty State */
+            <div className="text-center py-16 px-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl max-w-md mx-auto transition-colors duration-300">
+              <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">No articles available for this category</h3>
+              <p className="text-slate-550 dark:text-slate-400 text-sm mt-1.5 leading-relaxed">
+                No matching feeds could be indexed for "{CATEGORIES.find(c => c.id === activeCategory)?.label}". Hit the Sync trigger in the top right to download new RSS streams.
+              </p>
+            </div>
+          )}
+
+        </div>
       </main>
 
       {/* Floating Scroll to Top */}
       <BackToTop />
 
+      {/* Velvet Rope Auth Modal */}
+      <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} />
+
       {/* Clean Minimalist Aggregator Footer */}
-      <footer className="border-t border-slate-200 dark:border-slate-900 bg-white dark:bg-slate-900 py-10 transition-colors duration-300">
+      <footer className="mt-20 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 py-10 transition-colors duration-300">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 text-center space-y-2">
           <span className="text-sm font-bold tracking-tight text-slate-900 dark:text-slate-200 block">
             TruthFeed
           </span>
-          <p className="text-xs text-slate-500 dark:text-slate-405 leading-normal max-w-md mx-auto">
+          <p className="text-xs text-slate-500 dark:text-slate-400 leading-normal max-w-md mx-auto">
             Designed for fact-checking coverage comparisons and news transparency.
           </p>
           <p className="text-[10px] text-slate-400 dark:text-slate-500">
@@ -103,6 +570,7 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
           </p>
         </div>
       </footer>
+
     </div>
   );
 }

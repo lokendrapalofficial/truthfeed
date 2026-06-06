@@ -5,13 +5,23 @@ import Link from "next/link";
 import { ArrowLeft, Calendar, Globe, Sun, Moon, ExternalLink } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import ShareWidget from "@/components/ShareWidget";
-import { formatSmartDate } from "@/lib/utils";
+import SourceBadge from "@/components/SourceBadge";
 import CommunityNotesSection, { NoteItem } from "@/components/CommunityNotesSection";
 import NewsImage from "@/components/NewsImage";
 import VerificationDossier from "@/components/VerificationDossier";
-import DossierSkeleton from "@/components/DossierSkeleton";
+import { parseRelatedArticles } from "@/lib/rssParser";
 import { useTheme } from "next-themes";
 import { analyzeArticle } from "@/app/actions/analyzeArticle";
+import { WikiContext } from "@/lib/wiki";
+
+function getBriefingCategory(title: string): string {
+  const t = title.toLowerCase();
+  if (t.match(/\b(court|senate|election|trump|biden|harris|law|government|president|policy|democrat|republican|tax|debt|tariff|white house|congress|politics|world|israel|ceasefire|border|clash|attack|treaty|suriname)\b/)) return "World";
+  if (t.match(/\b(sport|game|nba|nfl|ipl|cricket|cup|stadium|athlete|championship|tennis|soccer|olympics|race|match|win|losing|golf)\b/)) return "Sports";
+  if (t.match(/\b(apple|google|microsoft|ai|meta|nvidia|intel|openai|semiconductor|chip|cybersecurity|software|tech|technology|phone|quantum|robot|market|finance|stock|stocks|economy|business|ceo|company|billion)\b/)) return "Tech/Business";
+  if (t.match(/\b(movie|film|hollywood|actor|actress|music|album|singer|pop|concert|tv|netflix|award|grammy|star|entertainment|celebrity|popstar|rapper)\b/)) return "Entertainment";
+  return "World";
+}
 
 interface ArticleClientProps {
   article: any;
@@ -28,74 +38,72 @@ function getCleanHeadline(title: string, sourceName: string): string {
   return clean;
 }
 
+// Extract a clean 2-paragraph excerpt from article content
+function getArticleParagraphs(title: string, summary: string | null, content: string | null, sourceName: string): string[] {
+  let clean = summary || content || "";
+  if (clean.includes("<ol>") || clean.includes("<li>")) {
+    clean = clean.replace(/<ol>[\s\S]*?<\/ol>/gi, "");
+  }
+  clean = clean.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+  clean = clean.replace(/See more headlines[\s\S]*/gi, "").trim();
+
+  let p1 = clean;
+  if (!p1 || p1.length < 60) {
+    p1 = `Reports from ${sourceName} indicate significant new developments regarding "${title}". Editorial staff and journalists are continuing to monitor the situation as official statements and primary source documents are released.`;
+  }
+
+  const p2 = `Verification teams are actively reviewing the details, factual assertions, and media coverage surrounding this story. Readers can access the full, uninterrupted report directly from ${sourceName} via the original publisher link below.`;
+
+  return [p1, p2];
+}
+
 export default function ArticleClient({ article, serializedNotes }: ArticleClientProps) {
   const { resolvedTheme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
-  const analysis = article.analysis;
+  const [verificationState, setVerificationState] = useState<"loading" | "verified" | "error">("loading");
+  const [analysisData, setAnalysisData] = useState<string | null>(null); // quickBrief
+  const [deepDiveData, setDeepDiveData] = useState<string | null>(null); // deepDive
+  const [verificationData, setVerificationData] = useState<any | null>(null); // verification scorecard
+  const [wikiContexts, setWikiContexts] = useState<WikiContext[]>([]);
+  const [category, setCategory] = useState<string>("World");
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // Initialize compilation states
-  const [verificationState, setVerificationState] = useState<"loading" | "verified" | "error">(
-    analysis && analysis.briefing ? "verified" : "loading"
-  );
-  const [analysisData, setAnalysisData] = useState<string | null>(analysis?.briefing || null);
-  const [verificationData, setVerificationData] = useState<any | null>(analysis?.verification || null);
-  const [framingMatrix, setFramingMatrix] = useState<any[]>(() => {
-    if (!analysis?.framingMatrix) return [];
-    return typeof analysis.framingMatrix === "string"
-      ? JSON.parse(analysis.framingMatrix)
-      : analysis.framingMatrix;
-  });
-  const [category, setCategory] = useState<string>(analysis?.category || "World");
+  const handleVerify = async () => {
+    setVerificationState("loading");
+    setErrorMsg(null);
 
-  // On-mount silent compilation trigger if analysis is missing
+    const detectedCategory = getBriefingCategory(article.title);
+
+    try {
+      const res = (await analyzeArticle(
+        article.id,
+        article.title,
+        article.summary || article.content || undefined,
+        article.relatedSources
+      )) as any;
+
+      if (res.success && (res.briefing || res.articleText)) {
+        setAnalysisData(res.briefing || res.articleText);
+        setDeepDiveData(res.articleText || res.briefing);
+        setVerificationData(res.verification || null);
+        setWikiContexts(res.wikiContexts || []);
+        setCategory(res.category || detectedCategory);
+        setVerificationState("verified");
+      } else {
+        setErrorMsg(res.error || "Briefing compilation failed.");
+        setVerificationState("error");
+      }
+    } catch (e: any) {
+      console.error(e);
+      setErrorMsg(e.message || "Failed to execute claim verification.");
+      setVerificationState("error");
+    }
+  };
+
   useEffect(() => {
     setMounted(true);
-
-    if (verificationState === "loading") {
-      let isSubscribed = true;
-
-      const triggerCompilation = async () => {
-        try {
-          const res = await analyzeArticle(
-            article.id,
-            article.title,
-            article.summary || article.content,
-            article.relatedSources
-          );
-
-          if (!isSubscribed) return;
-
-          if (res.success) {
-            setAnalysisData(res.briefing || "");
-            setCategory(res.category || "World");
-            setVerificationData(res.verification || null);
-            setFramingMatrix(
-              Array.isArray(res.framingMatrix)
-                ? res.framingMatrix
-                : typeof res.framingMatrix === "string"
-                ? JSON.parse(res.framingMatrix)
-                : []
-            );
-            setVerificationState("verified");
-          } else {
-            console.error("Compilation failed:", res.error);
-            setVerificationState("error");
-          }
-        } catch (error) {
-          console.error("Compilation error:", error);
-          if (isSubscribed) {
-            setVerificationState("error");
-          }
-        }
-      };
-
-      triggerCompilation();
-
-      return () => {
-        isSubscribed = false;
-      };
-    }
-  }, [article.id, article.title, article.summary, article.content, article.relatedSources, verificationState]);
+    handleVerify();
+  }, []);
 
   const formattedDate = new Date(article.publishedAt).toLocaleDateString("en-US", {
     weekday: "long",
@@ -105,6 +113,7 @@ export default function ArticleClient({ article, serializedNotes }: ArticleClien
   });
 
   const cleanTitle = getCleanHeadline(article.title, article.sourceName);
+  const paragraphs = getArticleParagraphs(cleanTitle, article.summary, article.content, article.sourceName);
 
   return (
     <div className="flex flex-col min-h-screen bg-white dark:bg-slate-900 text-gray-900 dark:text-slate-100 font-sans antialiased transition-colors duration-300">
@@ -151,33 +160,25 @@ export default function ArticleClient({ article, serializedNotes }: ArticleClien
       <main className="flex-1 mx-auto max-w-2xl w-full px-4 sm:px-6 py-8 space-y-7">
 
         {/* ——— ARTICLE HEADER ——— */}
-        <header className="space-y-4">
-          {/* Meta Row: publisher name + bias pill + credibility pill + timestamp right-aligned */}
-          <div className="flex flex-wrap items-center justify-between gap-4 text-xs">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="font-extrabold text-slate-900 dark:text-slate-100 text-sm tracking-tight">
-                {article.sourceName}
-              </span>
-              <span className="bg-blue-100 text-blue-800 dark:bg-blue-900/60 dark:text-blue-200 text-[10px] px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wide">
-                {article.source?.bias ? article.source.bias.replace("_", " ").toUpperCase() : "CENTER"}
-              </span>
-              <span className="bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-200 text-[10px] px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wide">
-                {article.source?.credibility ? article.source.credibility.replace("_", " ").toUpperCase() + " CREDIBILITY" : "HIGH CREDIBILITY"}
-              </span>
-            </div>
-            <div className="text-slate-500 dark:text-slate-450 font-mono text-[11px] ml-auto">
-              {formatSmartDate(article.publishedAt).text}
+        <header className="space-y-3">
+          {/* Source + Date metadata row */}
+          <div className="flex flex-wrap items-center gap-2.5 text-xs text-gray-500 dark:text-slate-400">
+            <SourceBadge sourceName={article.sourceName} source={article.source} />
+            <span className="text-gray-300 dark:text-slate-600">•</span>
+            <div className="flex items-center gap-1 text-gray-500 dark:text-slate-500">
+              <Calendar className="h-3.5 w-3.5" />
+              <span>{formattedDate}</span>
             </div>
           </div>
 
           {/* Headline */}
-          <h1 className="text-3xl md:text-4xl font-serif font-bold leading-tight text-slate-950 dark:text-slate-50 mt-4">
+          <h1 className="text-3xl font-extrabold leading-tight tracking-tight text-gray-950 dark:text-slate-100">
             {cleanTitle}
           </h1>
         </header>
 
         {/* ——— HERO IMAGE ——— */}
-        <div className="aspect-video w-full rounded-xl overflow-hidden bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 shadow-sm relative mt-6">
+        <div className="aspect-video w-full rounded-xl overflow-hidden bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 shadow-sm relative">
           <NewsImage
             url={article.url}
             title={cleanTitle}
@@ -189,12 +190,60 @@ export default function ArticleClient({ article, serializedNotes }: ArticleClien
           />
         </div>
 
-        {/* ——— DRAFTING LOADER SKELETON STATE ——— */}
-        {verificationState === "loading" && (
-          <DossierSkeleton />
+        {/* ——— ARTICLE EXCERPT ——— */}
+        <section className="space-y-4">
+          {paragraphs.map((p, idx) => (
+            <p key={idx} className="text-base text-gray-700 dark:text-slate-300 leading-relaxed font-sans">
+              {p}
+            </p>
+          ))}
+        </section>
+
+        {/* ——— ERROR SECTION ——— */}
+        {verificationState === "error" && (
+          <div className="flex flex-col items-center justify-center p-6 border border-dashed border-rose-200 dark:border-rose-800 rounded-xl bg-rose-50/50 dark:bg-rose-950/10 text-center gap-4 transition-colors">
+            <p className="text-xs text-rose-600 dark:text-rose-450 font-medium">
+              {errorMsg || "Briefing compilation failed."}
+            </p>
+            <button
+              onClick={handleVerify}
+              className="px-4 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-gray-700 dark:text-slate-350 text-xs font-semibold active:scale-[0.98] transition-all cursor-pointer"
+            >
+              Retry Compilation
+            </button>
+          </div>
         )}
 
-        {/* ——— ANCHOR POINT FOR ACTIVE INTELLIGENCE DOSSIER ——— */}
+        {/* ——— DRAFTING LOADER SECTION ——— */}
+        {verificationState === "loading" && (
+          <div className="max-w-2xl mx-auto px-4 py-8 space-y-6">
+            <div className="text-xs font-mono uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center gap-2 select-none">
+              <span className="flex h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulse" />
+              <span>Drafting verified report...</span>
+            </div>
+            <div className="animate-pulse space-y-8">
+              {/* Paragraph 1: 3 lines of text */}
+              <div className="space-y-3">
+                <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-full" />
+                <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-11/12" />
+                <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-4/5" />
+              </div>
+              {/* Paragraph 2: 4 lines of text */}
+              <div className="space-y-3">
+                <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-full" />
+                <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-11/12" />
+                <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-5/6" />
+                <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-3/4" />
+              </div>
+              {/* Paragraph 3: 2 lines of text */}
+              <div className="space-y-3">
+                <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-full" />
+                <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-5/6" />
+              </div>
+            </div>
+          </div>
+        )}
+
         <AnimatePresence>
           {verificationState === "verified" && (
             <motion.div
@@ -205,87 +254,163 @@ export default function ArticleClient({ article, serializedNotes }: ArticleClien
               <VerificationDossier
                 articleId={article.id}
                 articleTitle={article.title}
-                articleUrl={article.url}
                 sourceName={article.sourceName}
                 relatedSources={article.relatedSources}
                 briefing={analysisData}
+                articleText={deepDiveData}
+                wikiContexts={wikiContexts}
                 category={category}
                 verification={verificationData}
-                framingMatrix={framingMatrix}
               />
             </motion.div>
           )}
         </AnimatePresence>
 
-        {/* ——— ERROR / SOURCE MATRIX FALLBACK ——— */}
-        {verificationState === "error" && (
-          <div className="space-y-4 pt-2 border-t border-gray-100 dark:border-slate-800">
-            <div>
-              <h3 className="text-xs font-mono tracking-wider text-slate-550 dark:text-slate-400 uppercase select-none font-bold">
-                SOURCE MATRIX
-              </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                Intelligence synthesis is currently offline. You can access direct event coverage from reporting newsrooms below:
-              </p>
-            </div>
-            
-            <div className="divide-y divide-slate-200 dark:divide-slate-800/80 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden bg-slate-50/50 dark:bg-slate-900/30">
-              {(() => {
-                const sourcesList = Array.isArray(article.relatedSources) ? article.relatedSources : [];
-                if (sourcesList.length === 0) {
-                  return (
-                    <div className="p-5 text-sm text-slate-500 dark:text-slate-450 italic text-center">
-                      No alternative sources reported for this article.
+        {/* ——— CONTINUE READING BUTTON ——— */}
+        <div className="pt-1">
+          <a
+            href={article.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="group flex w-full items-center justify-center gap-2.5 h-14 rounded-2xl bg-gray-900 dark:bg-slate-100 hover:bg-gray-800 dark:hover:bg-slate-200 text-white dark:text-slate-900 font-bold text-sm uppercase tracking-wider shadow-md hover:shadow-lg active:scale-[0.98] transition-all duration-200 cursor-pointer"
+          >
+            <Globe className="h-4.5 w-4.5 opacity-70 group-hover:opacity-100 transition-opacity" />
+            <span>Continue Reading on {article.sourceName}</span>
+            <ExternalLink className="h-4 w-4 opacity-50 group-hover:opacity-100 transition-opacity" />
+          </a>
+        </div>
+
+        {/* ——— SOURCE COMPARISON MATRIX ——— */}
+        {(() => {
+          const related = parseRelatedArticles(article.content);
+          const hasMatrix = verificationData || article.source;
+          if (related.length === 0 && !hasMatrix) return null;
+
+          const biasLabels: Record<string, { label: string; color: string }> = {
+            LEFT:       { label: "Left",         color: "text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800/50" },
+            LEAN_LEFT:  { label: "Lean Left",    color: "text-sky-700 dark:text-sky-400 bg-sky-50 dark:bg-sky-950/30 border-sky-200 dark:border-sky-800/50" },
+            CENTER:     { label: "Center",       color: "text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700" },
+            LEAN_RIGHT: { label: "Lean Right",   color: "text-orange-700 dark:text-orange-400 bg-orange-50 dark:bg-orange-950/30 border-orange-200 dark:border-orange-800/50" },
+            RIGHT:      { label: "Right",        color: "text-rose-700 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/30 border-rose-200 dark:border-rose-800/50" },
+          };
+
+          const confMap: Record<string, { dot: string; bar: string }> = {
+            High:        { dot: "bg-emerald-500", bar: "bg-emerald-500" },
+            Medium:      { dot: "bg-blue-500",    bar: "bg-blue-500" },
+            Low:         { dot: "bg-slate-400",   bar: "bg-slate-400" },
+            Conflicting: { dot: "bg-rose-500",    bar: "bg-rose-500" },
+          };
+
+          const confLevel = verificationData?.confidenceLevel;
+          const score = verificationData?.consensusScore;
+          const bias = article.source?.bias;
+          const biasEntry = bias ? biasLabels[bias] : null;
+          const confEntry = confLevel ? confMap[confLevel] : null;
+
+          return (
+            <section className="space-y-4 pt-2 border-t border-gray-100 dark:border-slate-800">
+              {/* Matrix Header */}
+              <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 p-4 space-y-3">
+                <h3 className="font-bold text-sm text-gray-900 dark:text-slate-100 tracking-tight uppercase font-mono">
+                  📊 Source Comparison Matrix
+                </h3>
+
+                <div className="grid grid-cols-2 gap-3">
+                  {/* Consensus Score */}
+                  {score !== undefined && score !== null && (
+                    <div className="space-y-1">
+                      <span className="text-[10px] font-mono uppercase tracking-wider text-slate-500 dark:text-slate-400">Consensus</span>
+                      <div className="flex items-center gap-2">
+                        <div className="flex-1 h-2 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+                          <div
+                            className={`h-full rounded-full transition-all ${confEntry?.bar || "bg-slate-400"}`}
+                            style={{ width: `${(score / 5) * 100}%` }}
+                          />
+                        </div>
+                        <span className="text-xs font-bold font-mono text-slate-700 dark:text-slate-300">{score}/5</span>
+                      </div>
                     </div>
-                  );
-                }
-                return sourcesList.map((item: any, idx: number) => (
-                  <div key={idx} className="p-4 flex items-start justify-between gap-4 hover:bg-slate-100/50 dark:hover:bg-slate-850/40 transition-colors">
-                    <div className="space-y-1 min-w-0">
-                      <a
-                        href={item.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="font-bold text-sm text-slate-900 dark:text-slate-100 hover:underline leading-snug block transition-colors"
-                      >
-                        {item.title}
-                      </a>
-                      <span className="text-xs font-mono uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                        {item.sourceName || "Alternative Publisher"}
+                  )}
+
+                  {/* Confidence Level */}
+                  {confLevel && (
+                    <div className="space-y-1">
+                      <span className="text-[10px] font-mono uppercase tracking-wider text-slate-500 dark:text-slate-400">Trust Signal</span>
+                      <div className="flex items-center gap-1.5">
+                        <span className={`h-2 w-2 rounded-full shrink-0 ${confEntry?.dot || "bg-slate-400"}`} />
+                        <span className="text-xs font-semibold font-mono text-slate-700 dark:text-slate-300">{confLevel}</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Source Bias */}
+                  {biasEntry && (
+                    <div className="space-y-1">
+                      <span className="text-[10px] font-mono uppercase tracking-wider text-slate-500 dark:text-slate-400">Source Bias</span>
+                      <span className={`inline-flex items-center text-[10px] font-mono font-semibold border px-2 py-0.5 rounded-full ${biasEntry.color}`}>
+                        {biasEntry.label}
                       </span>
                     </div>
-                    <a
-                      href={item.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-xs font-bold text-blue-600 hover:text-blue-750 dark:text-blue-400 dark:hover:text-blue-300 inline-flex items-center gap-1 hover:underline select-none whitespace-nowrap shrink-0 pt-0.5"
-                    >
-                      <span>Access Report</span>
-                      <ExternalLink className="h-3.5 w-3.5" />
-                    </a>
+                  )}
+
+                  {/* Primary Source */}
+                  <div className="space-y-1">
+                    <span className="text-[10px] font-mono uppercase tracking-wider text-slate-500 dark:text-slate-400">Primary Source</span>
+                    <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">{article.sourceName}</span>
                   </div>
-                ));
-              })()}
-            </div>
-          </div>
-        )}
+                </div>
+
+                {/* Conflict Report */}
+                {verificationData?.conflictReport && (
+                  <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed border-t border-slate-200 dark:border-slate-700 pt-3 mt-1">
+                    <span className="font-semibold text-slate-700 dark:text-slate-300">TruthFeed Intelligence: </span>
+                    {verificationData.conflictReport}
+                  </p>
+                )}
+              </div>
+
+              {/* Alternative Coverage List */}
+              {related.length > 0 && (
+                <div>
+                  <p className="text-xs font-mono uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-3">
+                    Alternative Coverage ({related.length} newsroom{related.length !== 1 ? "s" : ""})
+                  </p>
+                  <div className="divide-y divide-gray-100 dark:divide-slate-800">
+                    {related.map((item, idx) => (
+                      <div key={idx} className="py-3.5 flex items-start gap-3">
+                        <span className="h-6 w-6 rounded-md bg-gray-100 dark:bg-slate-800 text-gray-700 dark:text-slate-300 font-bold text-xs flex items-center justify-center shrink-0 border border-gray-200 dark:border-slate-700">
+                          {item.source.charAt(0)}
+                        </span>
+                        <div className="space-y-0.5 min-w-0">
+                          <a
+                            href={item.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="font-semibold text-sm text-gray-900 dark:text-slate-100 hover:text-blue-600 dark:hover:text-blue-400 leading-snug block transition-colors"
+                          >
+                            {item.title}
+                          </a>
+                          <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-slate-450">
+                            <span className="font-bold text-gray-700 dark:text-slate-300">{item.source}</span>
+                            <span>·</span>
+                            <span>Alternative Coverage</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </section>
+          );
+        })()}
 
         {/* ——— SHARE WIDGET ——— */}
-        <div className="pt-2 border-t border-slate-205 dark:border-slate-800">
+        <div className="pt-2 border-t border-gray-100 dark:border-slate-800">
           <ShareWidget articleTitle={cleanTitle} />
         </div>
 
-        {/* ——— COMMUNITY NOTES (Collapsible Context) ——— */}
-        <section className="pb-16">
-          <details className="border border-slate-200 dark:border-slate-800 rounded-xl p-4 mt-6 bg-slate-50/50 dark:bg-slate-900/20 group">
-            <summary className="text-sm font-bold text-slate-500 dark:text-slate-450 hover:text-slate-900 dark:hover:text-slate-100 transition-colors cursor-pointer select-none outline-none">
-              Community Context
-            </summary>
-            <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800">
-              <CommunityNotesSection articleId={article.id} notes={serializedNotes} />
-            </div>
-          </details>
-        </section>
+        {/* Community Notes — hidden by product decision */}
 
       </main>
 

@@ -72,7 +72,6 @@ export default async function ArticlePage({ params }: ArticlePageProps) {
     include: {
       factChecks: true,
       source: true,
-      analysis: true,
       communityNotes: {
         include: { user: true },
       },
@@ -112,14 +111,6 @@ export default async function ArticlePage({ params }: ArticlePageProps) {
       sourceOrganization: fc.sourceOrganization,
       factCheckUrl: fc.factCheckUrl,
     })),
-    analysis: article.analysis ? {
-      id: article.analysis.id,
-      claim: article.analysis.claim,
-      briefing: article.analysis.briefing,
-      category: article.analysis.category,
-      verification: article.analysis.verification,
-      framingMatrix: article.analysis.framingMatrix,
-    } : null,
     relatedSources: article.relatedSources ? JSON.parse(JSON.stringify(article.relatedSources)) : [],
   };
 
