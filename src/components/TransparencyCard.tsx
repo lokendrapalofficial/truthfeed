@@ -72,8 +72,8 @@ function getEstimatedOutlets(articleId: string, title: string, category?: string
 }
 
 function TrustIndicator({ level }: { level?: string }) {
-  // Completely hide PENDING and VERIFIED tags from news cards
-  if (!level || level === "High") {
+  // Completely hide PENDING, VERIFIED, and MIXED tags from news cards
+  if (!level || level === "High" || level === "Medium") {
     return null;
   }
 
