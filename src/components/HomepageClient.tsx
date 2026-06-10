@@ -281,7 +281,7 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
   }, [deduplicatedArticles, sortBy, activeCategory]);
 
   const showHeroSection = useMemo(() => {
-    return activeCategory !== "top" && sortedAndFilteredArticles.length > 0;
+    return activeCategory !== "top" && activeCategory !== "foryou" && sortedAndFilteredArticles.length > 0;
   }, [activeCategory, sortedAndFilteredArticles]);
 
   const heroArticle = useMemo(() => {
@@ -444,6 +444,160 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
               {/* Left 12 Columns - Content (Full width since sidebar is removed) */}
               <div className="xl:col-span-12 space-y-10">
                 
+                {/* ── CATEGORIZED TRENDING SECTIONS (For You Tab Only) ── */}
+                {activeCategory === "foryou" && (
+                  <div className="space-y-12">
+                    {CATEGORIES.filter(c => c.id !== "foryou" && c.id !== "top").map((cat) => {
+                      const catArticles = sortedAndFilteredArticles
+                        .filter(art => getArticleCategory(art.title, art.summary || art.content || "") === cat.id)
+                        .slice(0, 5);
+
+                      if (catArticles.length === 0) return null;
+
+                      const mainStory = catArticles[0];
+                      const restStories = catArticles.slice(1);
+                      const smartDate = formatSmartDate(mainStory.publishedAt);
+                      
+                      const mainOutletsCount = (() => {
+                        const outlets = new Set<string>();
+                        if (mainStory.sourceName) outlets.add(mainStory.sourceName.toLowerCase().trim());
+                        if (mainStory.relatedSources && Array.isArray(mainStory.relatedSources)) {
+                          for (const src of mainStory.relatedSources) {
+                            if (src.sourceName) outlets.add(src.sourceName.toLowerCase().trim());
+                          }
+                        }
+                        if (mainStory.extraOutlets && Array.isArray(mainStory.extraOutlets)) {
+                          for (const src of mainStory.extraOutlets) {
+                            if (src.sourceName) outlets.add(src.sourceName.toLowerCase().trim());
+                          }
+                        }
+                        return outlets.size;
+                      })();
+
+                      return (
+                        <div key={cat.id} className="space-y-4">
+                          {/* Section Header */}
+                          <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
+                            <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider flex items-center gap-2">
+                              <span className="h-2 w-2 rounded-full bg-indigo-600 dark:bg-indigo-400 animate-pulse"></span>
+                              Trending News in {cat.label}
+                            </h3>
+                            <button
+                              onClick={() => {
+                                setActiveCategory(cat.id);
+                                window.scrollTo({ top: 0, behavior: "smooth" });
+                              }}
+                              className="text-xs font-bold font-mono uppercase tracking-wider text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 transition-colors flex items-center gap-1 cursor-pointer bg-transparent border-0"
+                            >
+                              View More <span aria-hidden>→</span>
+                            </button>
+                          </div>
+
+                          {/* Grid Layout */}
+                          {restStories.length === 0 ? (
+                            // Only 1 article, render single large card
+                            <div className="max-w-xl">
+                              <TransparencyCard article={mainStory} viewMode="grid" />
+                            </div>
+                          ) : (
+                            <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-stretch">
+                              {/* Left Side: Main Featured Story (5 columns) */}
+                              <div className="md:col-span-5 flex">
+                                <Link
+                                  href={`/article/${mainStory.id}`}
+                                  className="group flex flex-col w-full rounded-xl border border-slate-200 dark:border-slate-800/80 bg-white dark:bg-slate-900 overflow-hidden hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md transition-all duration-300"
+                                >
+                                  {/* Cover Image */}
+                                  <div className="aspect-video w-full overflow-hidden bg-slate-100 dark:bg-slate-800 relative shrink-0">
+                                    <NewsImage
+                                      url={mainStory.url}
+                                      title={mainStory.title}
+                                      sourceName={mainStory.sourceName}
+                                      imageUrl={mainStory.imageUrl}
+                                      isLogo={mainStory.isLogo}
+                                      isThematic={mainStory.isThematic}
+                                      className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-103"
+                                    />
+                                  </div>
+                                  
+                                  {/* Body */}
+                                  <div className="p-4 flex flex-col flex-1 gap-2.5">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <span className="text-[10px] font-mono font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                                        {mainStory.sourceName}
+                                      </span>
+                                      <span className="text-slate-300 dark:text-slate-600">·</span>
+                                      <span className="text-[10px] font-mono text-slate-400 dark:text-slate-500">
+                                        {smartDate.text}
+                                      </span>
+                                      {mainOutletsCount > 1 && (
+                                        <span className="text-[9px] font-mono text-indigo-750 dark:text-indigo-400 font-semibold bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-800/40 px-1.5 py-0.5 rounded-full">
+                                          {mainOutletsCount} outlets
+                                        </span>
+                                      )}
+                                    </div>
+                                    <h4 className="font-serif font-bold text-base text-slate-900 dark:text-slate-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors leading-snug line-clamp-3">
+                                      {mainStory.title}
+                                    </h4>
+                                  </div>
+                                </Link>
+                              </div>
+
+                              {/* Right Side: List of 3-4 Secondary Stories (7 columns) */}
+                              <div className="md:col-span-7 flex">
+                                <div className="flex flex-col justify-between w-full bg-slate-50/30 dark:bg-slate-950/10 border border-slate-200/60 dark:border-slate-800/50 rounded-xl p-4 divide-y divide-slate-200/60 dark:divide-slate-800/60">
+                                  {restStories.map((story) => {
+                                    const storyDate = formatSmartDate(story.publishedAt);
+                                    const storyOutletsCount = (() => {
+                                      const outlets = new Set<string>();
+                                      if (story.sourceName) outlets.add(story.sourceName.toLowerCase().trim());
+                                      if (story.relatedSources && Array.isArray(story.relatedSources)) {
+                                        for (const src of story.relatedSources) {
+                                          if (src.sourceName) outlets.add(src.sourceName.toLowerCase().trim());
+                                        }
+                                      }
+                                      if (story.extraOutlets && Array.isArray(story.extraOutlets)) {
+                                        for (const src of story.extraOutlets) {
+                                          if (src.sourceName) outlets.add(src.sourceName.toLowerCase().trim());
+                                        }
+                                      }
+                                      return outlets.size;
+                                    })();
+
+                                    return (
+                                      <Link
+                                        key={story.id}
+                                        href={`/article/${story.id}`}
+                                        className="group py-3 first:pt-0 last:pb-0 block"
+                                      >
+                                        <div className="flex items-center gap-2 flex-wrap text-[10px] font-mono text-slate-500 dark:text-slate-400 uppercase">
+                                          <span className="font-bold text-slate-700 dark:text-slate-300">
+                                            {story.sourceName}
+                                          </span>
+                                          <span>·</span>
+                                          <span>{storyDate.text}</span>
+                                          {storyOutletsCount > 1 && (
+                                            <span className="text-[9px] font-mono text-indigo-750 dark:text-indigo-400 font-semibold bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-800/40 px-1.5 py-0.5 rounded-full normal-case">
+                                              {storyOutletsCount} outlets
+                                            </span>
+                                          )}
+                                        </div>
+                                        <h5 className="text-sm font-bold text-slate-800 dark:text-slate-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors line-clamp-2 leading-snug mt-1.5 font-sans">
+                                          {story.title}
+                                        </h5>
+                                      </Link>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
                 {/* ── TRENDING NEWS ── Featured Hero + Sidebar Grid */}
                 {showHeroSection && (
                   <TopStories
