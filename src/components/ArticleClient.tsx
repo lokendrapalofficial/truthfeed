@@ -189,14 +189,7 @@ export default function ArticleClient({ article, serializedNotes }: ArticleClien
           />
         </div>
 
-        {/* ——— ARTICLE EXCERPT ——— */}
-        <section className="space-y-4">
-          {paragraphs.map((p, idx) => (
-            <p key={idx} className="font-serif text-[18px] leading-relaxed md:leading-loose text-slate-800 dark:text-slate-200">
-              {p}
-            </p>
-          ))}
-        </section>
+        {/* Excerpt removed to avoid raw scraped title data dumps */}
 
         {/* ——— ERROR SECTION ——— */}
         {verificationState === "error" && (
@@ -249,7 +242,100 @@ export default function ArticleClient({ article, serializedNotes }: ArticleClien
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5 }}
+              className="space-y-6"
             >
+              {/* ——— MEDIA COVERAGE SPECTRUM ——— */}
+              {(() => {
+                const related = article.relatedSources || [];
+                const totalOutlets = related.length + 1;
+
+                const getDomain = (url: string) => {
+                  try {
+                    return new URL(url).hostname;
+                  } catch {
+                    return "";
+                  }
+                };
+
+                return (
+                  <div className="my-6 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-955/30 p-5">
+                    
+                    <div className="mb-4 flex items-center justify-between">
+                      <h3 className="text-sm font-bold uppercase tracking-wider text-slate-505 dark:text-slate-400 flex items-center gap-2">
+                        <span className="h-2 w-2 rounded-full bg-blue-500 animate-pulse"></span>
+                        Media Coverage Spectrum
+                      </h3>
+                      <span className="text-xs text-slate-400 dark:text-slate-550">{totalOutlets} Outlets Tracking</span>
+                    </div>
+
+                    <div className="divide-y divide-slate-250/60 dark:divide-slate-800/60">
+                      
+                      {/* Main Source Row */}
+                      <div className="py-3.5 first:pt-0">
+                        <div className="flex items-center gap-2 mb-1 flex-wrap">
+                          <span className="text-xs font-bold text-slate-750 dark:text-zinc-300">{article.sourceName}</span>
+                          <span className="text-[10px] bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-zinc-400 px-1.5 py-0.5 rounded font-mono font-semibold">
+                            Main Source
+                          </span>
+                        </div>
+                        <a
+                          href={article.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-sm font-medium text-slate-900 dark:text-zinc-200 hover:text-blue-600 dark:hover:text-blue-400 transition-colors block leading-snug"
+                        >
+                          {cleanTitle}
+                        </a>
+                      </div>
+
+                      {/* Related Sources Rows */}
+                      {related.map((item: any, idx: number) => {
+                        const domain = getDomain(item.url);
+                        const perspective = verificationData?.perspectives?.find(
+                          (p: any) => p.sourceName.toLowerCase().trim() === item.sourceName.toLowerCase().trim()
+                        );
+
+                        return (
+                          <div key={idx} className="py-3.5 last:pb-0">
+                            <div className="flex items-center gap-2 mb-1 flex-wrap">
+                              {domain && (
+                                <img
+                                  src={`https://www.google.com/s2/favicons?domain=${domain}&sz=64`}
+                                  alt={item.sourceName}
+                                  className="h-3.5 w-3.5 object-contain shrink-0"
+                                  onError={(e) => {
+                                    (e.currentTarget as HTMLImageElement).src = `https://www.google.com/s2/favicons?domain=google.com&sz=64`;
+                                  }}
+                                />
+                              )}
+                              <span className="text-xs font-semibold text-slate-700 dark:text-zinc-400">{item.sourceName}</span>
+                              {perspective?.highlight ? (
+                                <span className="text-[10px] bg-indigo-50 dark:bg-indigo-950/40 text-indigo-750 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-800/40 px-1.5 py-0.5 rounded font-medium">
+                                  Angle: {perspective.highlight}
+                                </span>
+                              ) : (
+                                <span className="text-[10px] bg-slate-100 dark:bg-slate-800/60 text-slate-500 dark:text-slate-500 px-1.5 py-0.5 rounded font-medium">
+                                  Alternative Coverage
+                                </span>
+                              )}
+                            </div>
+                            <a
+                              href={item.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-sm font-medium text-slate-850 dark:text-zinc-350 hover:text-blue-600 dark:hover:text-blue-400 transition-colors block leading-snug"
+                            >
+                              {item.title}
+                            </a>
+                          </div>
+                        );
+                      })}
+
+                    </div>
+                  </div>
+                );
+              })()}
+
               <VerificationDossier
                 articleId={article.id}
                 articleTitle={article.title}
@@ -278,78 +364,7 @@ export default function ArticleClient({ article, serializedNotes }: ArticleClien
             <ExternalLink className="h-4 w-4 opacity-50 group-hover:opacity-100 transition-opacity" />
           </a>
         </div>
-
-        {/* ——— ALTERNATIVE COVERAGE ——— */}
-        {(() => {
-          const related = article.relatedSources || [];
-          if (related.length === 0) return null;
-
-          const getDomain = (url: string) => {
-            try {
-              return new URL(url).hostname;
-            } catch {
-              return "";
-            }
-          };
-
-          return (
-            <section className="space-y-4 pt-4 border-t border-gray-150 dark:border-slate-800">
-              <div>
-                <p className="text-xs font-mono uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-3">
-                  Alternative Coverage ({related.length} newsroom{related.length !== 1 ? "s" : ""})
-                </p>
-                <div className="divide-y divide-gray-100 dark:divide-slate-800">
-                  {related.map((item: any, idx: number) => {
-                    const domain = getDomain(item.url);
-                    const perspective = verificationData?.perspectives?.find(
-                      (p: any) => p.sourceName.toLowerCase().trim() === item.sourceName.toLowerCase().trim()
-                    );
-                    return (
-                      <div key={idx} className="py-3.5 flex items-start gap-3">
-                        <div className="h-6 w-6 rounded-md flex items-center justify-center shrink-0 border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 overflow-hidden">
-                          {domain ? (
-                            <img
-                              src={`https://www.google.com/s2/favicons?domain=${domain}&sz=64`}
-                              alt={item.sourceName}
-                              className="h-4.5 w-4.5 object-contain"
-                              onError={(e) => {
-                                (e.currentTarget as HTMLImageElement).src = `https://www.google.com/s2/favicons?domain=google.com&sz=64`;
-                              }}
-                            />
-                          ) : (
-                            <span className="text-gray-700 dark:text-slate-350 font-bold text-xs uppercase">
-                              {item.sourceName.charAt(0)}
-                            </span>
-                          )}
-                        </div>
-                        <div className="space-y-0.5 min-w-0">
-                          <a
-                            href={item.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="font-semibold text-sm text-gray-900 dark:text-slate-100 hover:text-blue-600 dark:hover:text-blue-400 leading-snug block transition-colors"
-                          >
-                            {item.title}
-                          </a>
-                          <div className="flex items-center gap-1.5 text-xs text-gray-505 dark:text-slate-450 mt-1 flex-wrap">
-                            <span className="font-bold text-gray-700 dark:text-slate-300">{item.sourceName}</span>
-                            {perspective?.highlight && (
-                              <>
-                                <span className="text-slate-300 dark:text-slate-605">➔</span>
-                                <span className="text-indigo-600 dark:text-indigo-400 font-semibold">{perspective.highlight}</span>
-                              </>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </section>
-          );
-        })()}
-
+        {/* Alternative Coverage moved to the Coverage Spectrum grid under verified block */}
         {/* ——— SHARE WIDGET ——— */}
         <div className="pt-2 border-t border-gray-100 dark:border-slate-800">
           <ShareWidget articleTitle={cleanTitle} />
