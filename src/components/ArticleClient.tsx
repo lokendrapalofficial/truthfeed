@@ -9,7 +9,6 @@ import SourceBadge from "@/components/SourceBadge";
 import CommunityNotesSection, { NoteItem } from "@/components/CommunityNotesSection";
 import NewsImage from "@/components/NewsImage";
 import VerificationDossier from "@/components/VerificationDossier";
-import { parseRelatedArticles } from "@/lib/rssParser";
 import { useTheme } from "next-themes";
 import { analyzeArticle } from "@/app/actions/analyzeArticle";
 import { WikiContext } from "@/lib/wiki";
@@ -193,7 +192,7 @@ export default function ArticleClient({ article, serializedNotes }: ArticleClien
         {/* ——— ARTICLE EXCERPT ——— */}
         <section className="space-y-4">
           {paragraphs.map((p, idx) => (
-            <p key={idx} className="text-base text-gray-700 dark:text-slate-300 leading-relaxed font-sans">
+            <p key={idx} className="font-serif text-[18px] leading-relaxed md:leading-loose text-slate-800 dark:text-slate-200">
               {p}
             </p>
           ))}
@@ -280,107 +279,49 @@ export default function ArticleClient({ article, serializedNotes }: ArticleClien
           </a>
         </div>
 
-        {/* ——— SOURCE COMPARISON MATRIX ——— */}
+        {/* ——— ALTERNATIVE COVERAGE ——— */}
         {(() => {
-          const related = parseRelatedArticles(article.content);
-          const hasMatrix = verificationData || article.source;
-          if (related.length === 0 && !hasMatrix) return null;
+          const related = article.relatedSources || [];
+          if (related.length === 0) return null;
 
-          const biasLabels: Record<string, { label: string; color: string }> = {
-            LEFT:       { label: "Left",         color: "text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800/50" },
-            LEAN_LEFT:  { label: "Lean Left",    color: "text-sky-700 dark:text-sky-400 bg-sky-50 dark:bg-sky-950/30 border-sky-200 dark:border-sky-800/50" },
-            CENTER:     { label: "Center",       color: "text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700" },
-            LEAN_RIGHT: { label: "Lean Right",   color: "text-orange-700 dark:text-orange-400 bg-orange-50 dark:bg-orange-950/30 border-orange-200 dark:border-orange-800/50" },
-            RIGHT:      { label: "Right",        color: "text-rose-700 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/30 border-rose-200 dark:border-rose-800/50" },
+          const getDomain = (url: string) => {
+            try {
+              return new URL(url).hostname;
+            } catch {
+              return "";
+            }
           };
-
-          const confMap: Record<string, { dot: string; bar: string }> = {
-            High:        { dot: "bg-emerald-500", bar: "bg-emerald-500" },
-            Medium:      { dot: "bg-blue-500",    bar: "bg-blue-500" },
-            Low:         { dot: "bg-slate-400",   bar: "bg-slate-400" },
-            Conflicting: { dot: "bg-rose-500",    bar: "bg-rose-500" },
-          };
-
-          const confLevel = verificationData?.confidenceLevel;
-          const score = verificationData?.consensusScore;
-          const bias = article.source?.bias;
-          const biasEntry = bias ? biasLabels[bias] : null;
-          const confEntry = confLevel ? confMap[confLevel] : null;
 
           return (
-            <section className="space-y-4 pt-2 border-t border-gray-100 dark:border-slate-800">
-              {/* Matrix Header */}
-              <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 p-4 space-y-3">
-                <h3 className="font-bold text-sm text-gray-900 dark:text-slate-100 tracking-tight uppercase font-mono">
-                  📊 Source Comparison Matrix
-                </h3>
-
-                <div className="grid grid-cols-2 gap-3">
-                  {/* Consensus Score */}
-                  {score !== undefined && score !== null && (
-                    <div className="space-y-1">
-                      <span className="text-[10px] font-mono uppercase tracking-wider text-slate-500 dark:text-slate-400">Consensus</span>
-                      <div className="flex items-center gap-2">
-                        <div className="flex-1 h-2 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
-                          <div
-                            className={`h-full rounded-full transition-all ${confEntry?.bar || "bg-slate-400"}`}
-                            style={{ width: `${(score / 5) * 100}%` }}
-                          />
-                        </div>
-                        <span className="text-xs font-bold font-mono text-slate-700 dark:text-slate-300">{score}/5</span>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Confidence Level */}
-                  {confLevel && (
-                    <div className="space-y-1">
-                      <span className="text-[10px] font-mono uppercase tracking-wider text-slate-500 dark:text-slate-400">Trust Signal</span>
-                      <div className="flex items-center gap-1.5">
-                        <span className={`h-2 w-2 rounded-full shrink-0 ${confEntry?.dot || "bg-slate-400"}`} />
-                        <span className="text-xs font-semibold font-mono text-slate-700 dark:text-slate-300">{confLevel}</span>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Source Bias */}
-                  {biasEntry && (
-                    <div className="space-y-1">
-                      <span className="text-[10px] font-mono uppercase tracking-wider text-slate-500 dark:text-slate-400">Source Bias</span>
-                      <span className={`inline-flex items-center text-[10px] font-mono font-semibold border px-2 py-0.5 rounded-full ${biasEntry.color}`}>
-                        {biasEntry.label}
-                      </span>
-                    </div>
-                  )}
-
-                  {/* Primary Source */}
-                  <div className="space-y-1">
-                    <span className="text-[10px] font-mono uppercase tracking-wider text-slate-500 dark:text-slate-400">Primary Source</span>
-                    <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">{article.sourceName}</span>
-                  </div>
-                </div>
-
-                {/* Conflict Report */}
-                {verificationData?.conflictReport && (
-                  <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed border-t border-slate-200 dark:border-slate-700 pt-3 mt-1">
-                    <span className="font-semibold text-slate-700 dark:text-slate-300">TruthFeed Intelligence: </span>
-                    {verificationData.conflictReport}
-                  </p>
-                )}
-              </div>
-
-              {/* Alternative Coverage List */}
-              {related.length > 0 && (
-                <div>
-                  <p className="text-xs font-mono uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-3">
-                    Alternative Coverage ({related.length} newsroom{related.length !== 1 ? "s" : ""})
-                  </p>
-                  <div className="divide-y divide-gray-100 dark:divide-slate-800">
-                    {related.map((item, idx) => (
+            <section className="space-y-4 pt-4 border-t border-gray-150 dark:border-slate-800">
+              <div>
+                <p className="text-xs font-mono uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-3">
+                  Alternative Coverage ({related.length} newsroom{related.length !== 1 ? "s" : ""})
+                </p>
+                <div className="divide-y divide-gray-100 dark:divide-slate-800">
+                  {related.map((item: any, idx: number) => {
+                    const domain = getDomain(item.url);
+                    const perspective = verificationData?.perspectives?.find(
+                      (p: any) => p.sourceName.toLowerCase().trim() === item.sourceName.toLowerCase().trim()
+                    );
+                    return (
                       <div key={idx} className="py-3.5 flex items-start gap-3">
-                        <span className="h-6 w-6 rounded-md bg-gray-100 dark:bg-slate-800 text-gray-700 dark:text-slate-300 font-bold text-xs flex items-center justify-center shrink-0 border border-gray-200 dark:border-slate-700">
-                          {item.source.charAt(0)}
-                        </span>
+                        <div className="h-6 w-6 rounded-md flex items-center justify-center shrink-0 border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 overflow-hidden">
+                          {domain ? (
+                            <img
+                              src={`https://www.google.com/s2/favicons?domain=${domain}&sz=64`}
+                              alt={item.sourceName}
+                              className="h-4.5 w-4.5 object-contain"
+                              onError={(e) => {
+                                (e.currentTarget as HTMLImageElement).src = `https://www.google.com/s2/favicons?domain=google.com&sz=64`;
+                              }}
+                            />
+                          ) : (
+                            <span className="text-gray-700 dark:text-slate-350 font-bold text-xs uppercase">
+                              {item.sourceName.charAt(0)}
+                            </span>
+                          )}
+                        </div>
                         <div className="space-y-0.5 min-w-0">
                           <a
                             href={item.url}
@@ -390,17 +331,21 @@ export default function ArticleClient({ article, serializedNotes }: ArticleClien
                           >
                             {item.title}
                           </a>
-                          <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-slate-450">
-                            <span className="font-bold text-gray-700 dark:text-slate-300">{item.source}</span>
-                            <span>·</span>
-                            <span>Alternative Coverage</span>
+                          <div className="flex items-center gap-1.5 text-xs text-gray-505 dark:text-slate-450 mt-1 flex-wrap">
+                            <span className="font-bold text-gray-700 dark:text-slate-300">{item.sourceName}</span>
+                            {perspective?.highlight && (
+                              <>
+                                <span className="text-slate-300 dark:text-slate-605">➔</span>
+                                <span className="text-indigo-600 dark:text-indigo-400 font-semibold">{perspective.highlight}</span>
+                              </>
+                            )}
                           </div>
                         </div>
                       </div>
-                    ))}
-                  </div>
+                    );
+                  })}
                 </div>
-              )}
+              </div>
             </section>
           );
         })()}

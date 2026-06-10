@@ -31,7 +31,7 @@ interface HomepageClientProps {
 
 const CATEGORIES = [
   { id: "foryou", label: "For You" },
-  { id: "top", label: "Top Stories" },
+  { id: "top", label: "Trending News" },
   { id: "world", label: "World" },
   { id: "business", label: "Business" },
   { id: "technology", label: "Technology" },
@@ -96,6 +96,7 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
   const [searchQuery, setSearchQuery] = useState("");
   const [activeCategory, setActiveCategory] = useState("foryou");
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+  const [sortBy, setSortBy] = useState<"latest" | "verified" | "conflict">("latest");
   const [isPending, startTransition] = useTransition();
   const [refreshMessage, setRefreshMessage] = useState<string | null>(null);
   useEffect(() => {
@@ -144,7 +145,7 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
   }, [initialArticles]);
 
   const filteredArticles = useMemo(() => {
-    let result = allArticles.filter((article) => {
+    return allArticles.filter((article) => {
       // 1. Search Query Match
       const matchesSearch =
         article.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -160,13 +161,90 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
 
       return true;
     });
+  }, [allArticles, searchQuery, activeCategory]);
 
-    // Mimic algorithmic feed personalization for "For You"
-    if (activeCategory === "foryou") {
-      result = [...result].sort((a, b) => {
-        const aVerified = isVerified(a) ? 1 : 0;
-        const bVerified = isVerified(b) ? 1 : 0;
-        if (aVerified !== bVerified) return bVerified - aVerified;
+  // Client-side title-similarity deduplication & outlet merging
+  const deduplicatedArticles = useMemo(() => {
+    const result: any[] = [];
+    const seenTitles = new Set<string>();
+    const seenUrls = new Set<string>();
+
+    const normalizeTitle = (title: string) => {
+      return title
+        .toLowerCase()
+        .replace(/[^\w\s]/g, "")
+        .split(/\s+/)
+        .filter(w => w.length > 3)
+        .sort()
+        .join(" ");
+    };
+
+    for (const art of filteredArticles) {
+      const url = art.url;
+      if (seenUrls.has(url)) continue;
+
+      const normTitle = normalizeTitle(art.title);
+      let isDuplicate = false;
+      for (const seen of seenTitles) {
+        const words1 = new Set(normTitle.split(" "));
+        const words2 = new Set(seen.split(" "));
+        if (words1.size === 0 || words2.size === 0) continue;
+        
+        let intersection = 0;
+        for (const w of words1) {
+          if (words2.has(w)) intersection++;
+        }
+        
+        const similarity = intersection / Math.max(words1.size, words2.size);
+        if (similarity > 0.6) {
+          isDuplicate = true;
+          break;
+        }
+      }
+
+      if (isDuplicate) {
+        // Find parent and merge
+        const parent = result.find(p => {
+          const normP = normalizeTitle(p.title);
+          const words1 = new Set(normTitle.split(" "));
+          const words2 = new Set(normP.split(" "));
+          let intersection = 0;
+          for (const w of words1) {
+            if (words2.has(w)) intersection++;
+          }
+          return (intersection / Math.max(words1.size, words2.size)) > 0.6;
+        });
+
+        if (parent) {
+          if (!parent.extraOutlets) parent.extraOutlets = [];
+          if (!parent.extraOutlets.some((o: any) => o.sourceName.toLowerCase() === art.sourceName.toLowerCase())) {
+            parent.extraOutlets.push({
+              title: art.title,
+              sourceName: art.sourceName,
+              url: art.url
+            });
+          }
+        }
+        continue;
+      }
+
+      seenUrls.add(url);
+      seenTitles.add(normTitle);
+      result.push({ ...art, extraOutlets: [] });
+    }
+    return result;
+  }, [filteredArticles]);
+
+  const sortedAndFilteredArticles = useMemo(() => {
+    let result = [...deduplicatedArticles];
+
+    if (sortBy === "latest") {
+      result.sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
+    } else if (sortBy === "verified") {
+      result.sort((a, b) => {
+        const aVer = isVerified(a) ? 1 : 0;
+        const bVer = isVerified(b) ? 1 : 0;
+        if (aVer !== bVer) return bVer - aVer;
 
         const aScore = getConsensusScore(a) || 0;
         const bScore = getConsensusScore(b) || 0;
@@ -174,35 +252,41 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
 
         return new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime();
       });
+    } else if (sortBy === "conflict") {
+      result.sort((a, b) => {
+        const aCon = isConflicting(a) ? 1 : 0;
+        const bCon = isConflicting(b) ? 1 : 0;
+        if (aCon !== bCon) return bCon - aCon;
+
+        const aScore = getConsensusScore(a) || 5;
+        const bScore = getConsensusScore(b) || 5;
+        if (aScore !== bScore) return aScore - bScore;
+
+        return new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime();
+      });
     }
 
     return result;
-  }, [allArticles, searchQuery, activeCategory]);
-
-  const trendingVerified = useMemo(() => {
-    return allArticles
-      .filter((art) => isVerified(art))
-      .slice(0, 5);
-  }, [allArticles]);
+  }, [deduplicatedArticles, sortBy, activeCategory]);
 
   const showHeroSection = useMemo(() => {
-    return activeCategory !== "top" && filteredArticles.length > 0;
-  }, [activeCategory, filteredArticles]);
+    return activeCategory !== "top" && sortedAndFilteredArticles.length > 0;
+  }, [activeCategory, sortedAndFilteredArticles]);
 
   const heroArticle = useMemo(() => {
     if (!showHeroSection) return null;
-    return filteredArticles[0] || null;
-  }, [showHeroSection, filteredArticles]);
+    return sortedAndFilteredArticles[0] || null;
+  }, [showHeroSection, sortedAndFilteredArticles]);
 
   const stackArticles = useMemo(() => {
     if (!showHeroSection) return [];
-    return filteredArticles.slice(1, 4);
-  }, [showHeroSection, filteredArticles]);
+    return sortedAndFilteredArticles.slice(1, 4);
+  }, [showHeroSection, sortedAndFilteredArticles]);
 
   const feedArticles = useMemo(() => {
-    if (!showHeroSection) return filteredArticles;
-    return filteredArticles.slice(4);
-  }, [showHeroSection, filteredArticles]);
+    if (!showHeroSection) return sortedAndFilteredArticles;
+    return sortedAndFilteredArticles.slice(4);
+  }, [showHeroSection, sortedAndFilteredArticles]);
 
   return (
     <div className="flex flex-col min-h-screen bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 font-sans antialiased transition-colors duration-300">
@@ -344,12 +428,12 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
           )}
 
           {filteredArticles.length > 0 ? (
-            <div className="grid grid-cols-1 xl:grid-cols-12 gap-8">
+            <div className="grid grid-cols-1 gap-8">
               
-              {/* Left 9 Columns - Content */}
-              <div className="xl:col-span-9 space-y-10">
+              {/* Left 12 Columns - Content (Full width since sidebar is removed) */}
+              <div className="xl:col-span-12 space-y-10">
                 
-                {/* ── TOP STORIES ── Featured Hero + Sidebar Grid */}
+                {/* ── TRENDING NEWS ── Featured Hero + Sidebar Grid */}
                 {showHeroSection && (
                   <TopStories
                     activeCategory={activeCategory}
@@ -360,17 +444,51 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
                     isConflicting={isConflicting}
                   />
                 )}
-
+ 
                 {/* High Density Main Feed (Below the fold) */}
                 <section className="space-y-6">
-                  <div className="border-b border-slate-200 dark:border-slate-800 pb-3 flex justify-between items-center">
+                  <div className="border-b border-slate-200 dark:border-slate-800 pb-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                     <h2 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
                       Latest Updates
                     </h2>
+                    
+                    {/* Integrity & Time Sort Toggles */}
+                    <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-850 p-1 rounded-lg border border-slate-200/60 dark:border-slate-800/80">
+                      <button
+                        onClick={() => setSortBy("latest")}
+                        className={`px-3 py-1 text-xs font-semibold rounded-md transition-all cursor-pointer ${
+                          sortBy === "latest"
+                            ? "bg-white dark:bg-slate-700 text-slate-850 dark:text-slate-100 shadow-sm"
+                            : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-350"
+                        }`}
+                      >
+                        Latest
+                      </button>
+                      <button
+                        onClick={() => setSortBy("verified")}
+                        className={`px-3 py-1 text-xs font-semibold rounded-md transition-all cursor-pointer ${
+                          sortBy === "verified"
+                            ? "bg-white dark:bg-slate-700 text-slate-850 dark:text-slate-100 shadow-sm"
+                            : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-350"
+                        }`}
+                      >
+                        Most Verified
+                      </button>
+                      <button
+                        onClick={() => setSortBy("conflict")}
+                        className={`px-3 py-1 text-xs font-semibold rounded-md transition-all cursor-pointer ${
+                          sortBy === "conflict"
+                            ? "bg-white dark:bg-slate-700 text-slate-850 dark:text-slate-100 shadow-sm"
+                            : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-350"
+                        }`}
+                      >
+                        Highest Conflict
+                      </button>
+                    </div>
                   </div>
-
+ 
                   {feedArticles.length > 0 ? (
-                    <div className={viewMode === "grid" ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" : "flex flex-col gap-4 max-w-3xl"}>
+                    <div className={viewMode === "grid" ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6" : "flex flex-col gap-4 max-w-5xl"}>
                       {feedArticles.map((article) => (
                         <TransparencyCard key={article.id} article={article} viewMode={viewMode} />
                       ))}
@@ -381,42 +499,9 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
                     </p>
                   )}
                 </section>
-
+ 
               </div>
-
-              {/* Sticky Sidebar (xl:col-span-3) */}
-              <aside className="xl:col-span-3 hidden xl:block sticky top-28 self-start max-h-[calc(100vh-9rem)] overflow-y-auto no-scrollbar pr-1">
-                
-                {/* Trending Verifications */}
-                <div className="bg-slate-50 dark:bg-slate-900/50 rounded-xl p-4 border border-slate-200 dark:border-slate-800">
-                  <h3 className="font-extrabold text-sm uppercase tracking-wider text-slate-900 dark:text-slate-100 mb-3 pb-2 border-b border-slate-200 dark:border-slate-800">
-                    Trending 📈
-                  </h3>
-                  <div className="flex flex-col gap-3">
-                    {trendingVerified.length > 0 ? (
-                      trendingVerified.map((art, index) => (
-                        <div key={art.id} className="flex gap-3 py-2 border-b border-slate-100 dark:border-slate-800/55 last:border-0">
-                          <span className="text-xl font-extrabold text-slate-305 dark:text-slate-700 w-6 text-right shrink-0">
-                            {index + 1}
-                          </span>
-                          <div className="flex-1 min-w-0">
-                            <Link href={`/article/${art.id}`} className="font-semibold text-sm text-slate-800 dark:text-slate-200 hover:text-blue-600 dark:hover:text-blue-400 line-clamp-2 transition-colors">
-                              {art.title}
-                            </Link>
-                            <span className="text-[10px] text-slate-400 dark:text-slate-500 font-mono mt-1 block">
-                              {art.sourceName} • {formatSmartDate(art.publishedAt).text}
-                            </span>
-                          </div>
-                        </div>
-                      ))
-                    ) : (
-                      <p className="text-xs text-slate-400 italic">No verified stories trending today.</p>
-                    )}
-                  </div>
-                </div>
-
-              </aside>
-
+ 
             </div>
           ) : (
             /* Empty State */

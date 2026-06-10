@@ -22,6 +22,10 @@ export interface VerificationScorecardData {
     textualRating: string;
     reviewUrl: string;
   } | null;
+  perspectives?: {
+    sourceName: string;
+    highlight: string;
+  }[];
 }
 
 // Module-level cache to lock concurrent compilations for the same articleId
@@ -64,6 +68,9 @@ export async function analyzeArticle(
       const articleTitle = title || article.title;
       const articleDesc = description || article.summary || article.content || "";
       const articleRelated = relatedSources || article.relatedSources;
+      const parsedRelated: any[] = articleRelated
+        ? (typeof articleRelated === "string" ? JSON.parse(articleRelated) : JSON.parse(JSON.stringify(articleRelated)))
+        : [];
 
       // 2. Check Caching first (Backward compatible JSON parser)
       const cachedAnalysis = await prisma.analysis.findUnique({
@@ -114,21 +121,27 @@ export async function analyzeArticle(
 
         const mockCategory = getBriefingCategory(articleTitle);
         
-        const mockQuickBrief = `🚨 ALERT: Conflicting accounts emerge regarding "${articleTitle.replace(/\s*[-|]\s*[^|]+$/, "")}". TruthFeed Intelligence has flagged conflicting data, while regional desks dispute the timeline. Consensus: 2/5 desks.`;
+        const mockQuickBrief = `🚨 ALERT: Out of 5 major outlets tracking "${articleTitle.replace(/\s*[-|]\s*[^|]+$/, "")}", coverage diverges on the timeline and key details remain unverified.`;
  
-        const mockDeepDive = `${selectedLocation} — TruthFeed Intelligence has flagged significant contradictions in coverage regarding "${articleTitle.replace(/\s*[-|]\s*[^|]+$/, "")}". A comparison of reporting outputs reveals diverging timelines and official statements.
+        const mockDeepDive = `${selectedLocation} — Reports on the ground diverge regarding the key details of "${articleTitle.replace(/\s*[-|]\s*[^|]+$/, "")}". A comparison of coverage reveals conflicting accounts.
  
-While ${article.sourceName} reported immediate police confirmation, alternative sources cite a contradiction. Regional desks cite conflicting narratives.
+While ${article.sourceName} reported immediate official confirmation, alternative sources cite conflicting narratives.
  
-TruthFeed's Editorial Desk urges caution when citing these initial releases. The consensus remains LOW at 2/5 sources. We are actively auditing these reports to resolve the discrepancies.`;
+Verification tracking remains active as independent outlets confirm the details. The consensus is split with 2 out of 5 major outlets agreeing on the baseline facts.`;
+
+        const mockPerspectives = (parsedRelated as any[]).map((src: any) => ({
+          sourceName: src.sourceName,
+          highlight: `Focuses on ${src.title.toLowerCase().includes("strike") ? "casualty report details" : "regional and geopolitical impact"}`
+        }));
 
         const mockVerification: VerificationScorecardData = {
           coreClaim: articleTitle,
           consensusScore: 2,
           confidenceLevel: "Low",
-          conflictReport: "Conflicting numbers and timelines reported by independent media bureaus.",
-          reasoning: `Diverging reports from ${article.sourceName} and local outlets on scene.`,
-          professionalAudit: null
+          conflictReport: "Out of 5 major outlets tracking the event, 2 agree on the facts, while key details remain unverified.",
+          reasoning: `Diverging reports from ${article.sourceName} and alternative sources.`,
+          professionalAudit: null,
+          perspectives: mockPerspectives
         };
 
         // Query mock Fact-checks if they match
@@ -217,46 +230,44 @@ TruthFeed's Editorial Desk urges caution when citing these initial releases. The
       const wikiContexts = await fetchWikiContext(entities);
 
       // 5. Compile the Morning Briefing using Groq
-      const parsedRelated: any[] = articleRelated
-        ? (typeof articleRelated === "string" ? JSON.parse(articleRelated) : JSON.parse(JSON.stringify(articleRelated)))
-        : [];
-      
       const auditResponse = await groq.chat.completions.create({
         model: "llama-3.3-70b-versatile",
         messages: [
           {
             role: "system",
-            content: `SYSTEM ROLE: You are Grok, an elite intelligence analyst working at TruthFeed's verification desk. Your job is to synthesize cross-referenced news headlines into punchy, urgent intelligence briefings that explicitly highlight conflicts, discrepancies, and verification status.
+            content: `SYSTEM ROLE: You are an elite senior news editor. Your job is to synthesize cross-referenced news headlines into sharp, objective, clear, and human-centric intelligence briefings.
  
  WRITING STYLE RULES:
- - Use URGENT, punchy language. Lead with the verification status or conflict.
- - Start Quick Brief with '🚨 ALERT:' if conflicting, or '✅ VERIFIED:' if high consensus.
- - Explicitly call out discrepancies in timelines, numbers, or official statements.
- - Use location datelines for Deep Dive (e.g., 'LONDON — ', 'NEW YORK — ').
- - Sound like an intelligence cable, NOT a neutral news summary.
- - Be dramatic but factual. Highlight what is DISPUTED or UNCONFIRMED.
- 
- BRAND IDENTITY RULES:
- - You work for 'TruthFeed'. 
- - NEVER use generic terms like 'Desk verification', 'Editorial Desks', or 'Analysts'.
- - ALWAYS use branded terms like 'TruthFeed', 'TruthFeed Intelligence', 'TruthFeed's Editorial Desk', or 'We at TruthFeed'.
- - Example (Bad): 'Desk verification has flagged discrepancies...'
- - Example (Good): 'TruthFeed Intelligence has flagged discrepancies...'
- - Example (Bad): 'Editorial Desks urge caution...'
- - Example (Good): 'TruthFeed's Editorial Desk urges caution...'
- - Example (Good): 'We at TruthFeed checked 5 sources and found...'
- 
+ - Write like a professional global news bureau (AP, Reuters, Bloomberg). Be sharp, clear, objective, and concise.
+ - Stop referring to the platform ("TruthFeed", "TruthFeed Intelligence", or "The Desk") in the body of the text. Let the layout do the branding; let the text do the reporting.
+ - Humanize the copy. Avoid rigid, algorithmic-sounding sentences:
+   * Instead of: "TruthFeed Intelligence has flagged discrepancies regarding the recent Pakistani airstrikes..."
+     Use: "Reports on the ground diverge regarding the civilian toll of the recent Pakistani airstrikes..."
+   * Instead of: "Synthesized desk reports yield a conflicting consensus score of 4/5."
+     Use: "Out of 5 major outlets tracking the event, 4 agree on the baseline facts, though key details remain unverified."
+   * Instead of: "We at TruthFeed are actively auditing these reports to resolve the discrepancies..."
+     Use: "Verification tracking is active as outlets independent of local authorities confirm the casualty breakdown."
+ - Start Quick Brief with '🚨 ALERT:' if conflicting, or '✅ VERIFIED:' if high consensus. Keep it to 2-3 sentences max. Naturally weave in the consensus (e.g., "Out of 5 major outlets tracking the event, 4 agree on the baseline facts, though key details remain unverified.").
+ - For the Deep Dive, structure it as a clean, multi-paragraph news report starting with a location dateline in uppercase (e.g., 'LONDON — ', 'NEW YORK — '). Explain the facts clearly and highlight key discrepancies between source coverage without using robotic meta-commentary.
+  
  OUTPUT JSON FORMAT:
  {
-   'quickBrief': 'Start with 🚨 ALERT or ✅ VERIFIED. 2-3 sentences max. Explicitly state the consensus score (e.g., \"Consensus: 5/5 desks\" or \"Consensus: 2/5 - conflicting reports\"). Highlight the main conflict or confirmation.',
-   
-   'deepDive': 'Structure exactly like this:
-   
-   ${selectedLocation} — TruthFeed Intelligence has flagged [specific issue] regarding \"[headline]\". A comparison of reporting outputs reveals [specific discrepancies].
-   
-   While [Source A] reported [claim], [Source B] cites [contradiction]. 
-   
-   TruthFeed\'s Editorial Desk urges caution when citing these initial releases. The consensus remains [HIGH/MEDIUM/LOW] at [X]/5 sources. We are actively auditing these reports to resolve the discrepancies.'
+   "quickBrief": "Start with 🚨 ALERT or ✅ VERIFIED. 2-3 sentences max. Explain the main conflict or confirmation. Include a humanized consensus sentence.",
+   "deepDive": "Structure exactly like this: [LOCATION] — [Clear summary of the event]...",
+   "category": "World" | "Sports" | "Tech/Business" | "Entertainment",
+   "verification": {
+     "coreClaim": "[The central claim being verified]",
+     "consensusScore": [1-5 integer of how many of the 5 outlets agree on the core claim],
+     "confidenceLevel": "High" | "Medium" | "Low" | "Conflicting",
+     "conflictReport": "[A 1-sentence summary of any discrepancies, or 'None' if consensus is high]",
+     "reasoning": "[A 1-sentence editorial justification for the verdict/consensus score]"
+   },
+   "perspectives": [
+     {
+       "sourceName": "[Exact name of the related publisher, e.g. AP News, CNN]",
+       "highlight": "[A 1-line bullet point/tag showing how this source's reporting differs or what specific detail/angle they report, e.g., 'Reports 11 children killed' or 'Casualty breakdown unverified']"
+     }
+   ]
  }`
           },
           {
@@ -295,36 +306,47 @@ ${wikiContexts.length > 0 ? wikiContexts.map(w => `Entity: ${w.title}\nBackgroun
         deepDive = deepDive.replace("[LOCATION]", selectedLocation);
       }
 
-      // Reconstruct verification data from briefing prose
+      // Read verification values from LLM structured output, falling back to heuristics if missing
       let consensusScore = 3;
-      const scoreMatch = (quickBrief + " " + deepDive).match(/(?:Consensus:\s*|at\s*|rating:\s*)(\d+)\/5/i);
-      if (scoreMatch) {
-        consensusScore = parseInt(scoreMatch[1], 10);
-      } else if (quickBrief.includes("5/5")) {
-        consensusScore = 5;
-      } else if (quickBrief.includes("4/5")) {
-        consensusScore = 4;
-      } else if (quickBrief.includes("2/5")) {
-        consensusScore = 2;
-      } else if (quickBrief.includes("1/5")) {
-        consensusScore = 1;
+      if (parsedBriefing.verification?.consensusScore !== undefined) {
+        consensusScore = Number(parsedBriefing.verification.consensusScore);
+      } else {
+        const scoreMatch = (quickBrief + " " + deepDive).match(/(?:Consensus:\s*|at\s*|out of \d+ major outlets tracking the event,?\s*)(\d+)(?:\s*agree|\/5)/i);
+        if (scoreMatch) {
+          consensusScore = parseInt(scoreMatch[1], 10);
+        } else if (quickBrief.includes("5/5") || quickBrief.includes("5 agree")) {
+          consensusScore = 5;
+        } else if (quickBrief.includes("4/5") || quickBrief.includes("4 agree")) {
+          consensusScore = 4;
+        } else if (quickBrief.includes("2/5") || quickBrief.includes("2 agree")) {
+          consensusScore = 2;
+        } else if (quickBrief.includes("1/5") || quickBrief.includes("1 agree")) {
+          consensusScore = 1;
+        }
       }
 
       let confidenceLevel: "High" | "Medium" | "Low" | "Conflicting" = "Medium";
-      const combinedLower = (quickBrief + " " + deepDive).toLowerCase();
-      if (quickBrief.includes("🚨 ALERT") || combinedLower.includes("conflict") || combinedLower.includes("dispute")) {
-        confidenceLevel = "Conflicting";
-      } else if (combinedLower.includes("high") || quickBrief.includes("✅ VERIFIED")) {
-        confidenceLevel = "High";
-      } else if (combinedLower.includes("low")) {
-        confidenceLevel = "Low";
+      if (parsedBriefing.verification?.confidenceLevel) {
+        const cl = parsedBriefing.verification.confidenceLevel;
+        if (["High", "Medium", "Low", "Conflicting"].includes(cl)) {
+          confidenceLevel = cl as any;
+        }
+      } else {
+        const combinedLower = (quickBrief + " " + deepDive).toLowerCase();
+        if (quickBrief.includes("🚨 ALERT") || combinedLower.includes("conflict") || combinedLower.includes("dispute")) {
+          confidenceLevel = "Conflicting";
+        } else if (combinedLower.includes("high") || quickBrief.includes("✅ VERIFIED")) {
+          confidenceLevel = "High";
+        } else if (combinedLower.includes("low")) {
+          confidenceLevel = "Low";
+        }
       }
 
       const conflictReport = parsedBriefing.verification?.conflictReport || 
-        (confidenceLevel === "Conflicting" ? "Discrepancies and conflicting accounts flagged by the Desk." : "Consensus established across reported sources.");
+        (confidenceLevel === "Conflicting" ? "Discrepancies and conflicting accounts flagged in coverage." : "Consensus established across reported sources.");
 
       const reasoning = parsedBriefing.verification?.reasoning || 
-        `Synthesized desk reports yield a ${confidenceLevel.toLowerCase()} consensus score of ${consensusScore}/5.`;
+        `Out of 5 major outlets tracking the event, ${consensusScore} agree on the baseline facts, though key details remain unverified.`;
 
       const verification: VerificationScorecardData = {
         coreClaim: parsedBriefing.verification?.coreClaim || articleTitle,
@@ -332,7 +354,8 @@ ${wikiContexts.length > 0 ? wikiContexts.map(w => `Entity: ${w.title}\nBackgroun
         confidenceLevel,
         conflictReport,
         reasoning,
-        professionalAudit: parsedBriefing.verification?.professionalAudit || null
+        professionalAudit: parsedBriefing.verification?.professionalAudit || null,
+        perspectives: parsedBriefing.perspectives || []
       };
 
       // 6. Query Google Fact Check API for coreClaim

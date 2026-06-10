@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import VerificationScorecard from "./VerificationScorecard";
 import { VerificationScorecardData } from "@/app/actions/analyzeArticle";
 
@@ -21,6 +22,7 @@ export default function VerificationDossier({
   briefing,
   articleText,
   verification,
+  category,
 }: VerificationDossierProps) {
   const [viewMode, setViewMode] = useState<"quick" | "deep">("quick");
   const sourcesList = Array.isArray(relatedSources) ? relatedSources : [];
@@ -28,13 +30,23 @@ export default function VerificationDossier({
   // Pick text based on selected toggle mode
   const activeText = viewMode === "quick" ? briefing : (articleText || briefing);
 
-  // Parse the active text into paragraphs
+  // Parse the active text into paragraphs for deep dive
   const paragraphs = activeText
     ? activeText
         .split(/\n\s*\n/)
         .map((p) => p.trim())
         .filter(Boolean)
     : [];
+
+  // Helper to extract clean bullet points from quick brief text
+  const getBulletPoints = (text: string) => {
+    if (!text) return [];
+    const cleanText = text.replace(/^(🚨\s*ALERT:?|✅\s*VERIFIED:?)/i, "").trim();
+    return cleanText
+      .split(/(?<=[.!?])\s+/)
+      .map((s) => s.trim())
+      .filter((s) => s.length > 5);
+  };
 
   // Helper to render paragraph with custom bold prefixes and monospace consensus badge
   const renderParagraph = (para: string, idx: number) => {
@@ -73,7 +85,7 @@ export default function VerificationDossier({
     return (
       <p
         key={idx}
-        className="font-serif text-lg leading-relaxed text-slate-800 dark:text-slate-200"
+        className="font-serif text-[18px] leading-relaxed md:leading-loose text-slate-800 dark:text-slate-200"
       >
         {prefix}
         {parts.map((part, pIdx) => {
@@ -81,7 +93,7 @@ export default function VerificationDossier({
             return (
               <span
                 key={pIdx}
-                className="font-mono text-sm bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-100 px-2.5 py-1 rounded border border-slate-200 dark:border-slate-700/60 mx-1 select-all inline-block align-middle font-semibold"
+                className="font-mono text-sm bg-slate-100 dark:bg-slate-800/80 text-slate-800 dark:text-slate-100 px-2.5 py-1 rounded border border-slate-200 dark:border-slate-700/60 mx-1 select-all inline-block align-middle font-semibold"
               >
                 {part}
               </span>
@@ -94,19 +106,16 @@ export default function VerificationDossier({
   };
 
   return (
-    <div className="max-w-2xl mx-auto px-4 py-8 bg-white dark:bg-slate-900 transition-colors duration-300 space-y-6">
-      {/* Verification Scorecard sitting at the top */}
-      <VerificationScorecard data={verification} />
-
+    <div className="max-w-2xl mx-auto px-4 py-6 bg-white dark:bg-slate-900 transition-colors duration-300 space-y-8">
       {/* Segment Switcher Toggle */}
-      <div className="flex justify-center border-b border-slate-200 dark:border-slate-700/60 pb-3 mt-4">
-        <div className="inline-flex rounded-xl bg-slate-100 dark:bg-slate-800 p-1 border border-slate-200 dark:border-slate-700/60">
+      <div className="flex justify-center border-b border-slate-200 dark:border-slate-800 pb-3">
+        <div className="inline-flex rounded-xl bg-slate-100 dark:bg-slate-800 p-1 border border-slate-200 dark:border-slate-700/65">
           <button
             onClick={() => setViewMode("quick")}
             className={`px-4.5 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all cursor-pointer ${
               viewMode === "quick"
                 ? "bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 shadow-sm"
-                : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-350"
+                : "text-slate-500 hover:text-slate-750 dark:hover:text-slate-350"
             }`}
           >
             Quick Brief
@@ -116,7 +125,7 @@ export default function VerificationDossier({
             className={`px-4.5 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all cursor-pointer ${
               viewMode === "deep"
                 ? "bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 shadow-sm"
-                : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-350"
+                : "text-slate-500 hover:text-slate-750 dark:hover:text-slate-350"
             }`}
           >
             Deep Dive
@@ -124,38 +133,65 @@ export default function VerificationDossier({
         </div>
       </div>
 
-      {/* synthesized prose paragraphs */}
-      {paragraphs.length > 0 ? (
-        <div className="space-y-6 pt-2">
-          {paragraphs.map((para, idx) => renderParagraph(para, idx))}
-          
-          <div className="mt-6 pt-4 border-t border-slate-200 dark:border-slate-700 flex items-center gap-2">
-            <span className="text-xs font-mono uppercase tracking-wider text-slate-500 dark:text-slate-400">
-              📡 Report generated by TruthFeed Intelligence
-            </span>
-          </div>
-        </div>
-      ) : (
-        /* Pulser Skeleton matching 3 paragraphs of text (fallback/safeguard) */
-        <div className="animate-pulse space-y-8 pt-4">
-          <div className="space-y-3">
-            <div className="h-4 bg-slate-200 dark:bg-slate-800 rounded w-full" />
-            <div className="h-4 bg-slate-200 dark:bg-slate-800 rounded w-11/12" />
-            <div className="h-4 bg-slate-200 dark:bg-slate-800 rounded w-4/5" />
-          </div>
-          <div className="space-y-3">
-            <div className="h-4 bg-slate-200 dark:bg-slate-800 rounded w-full" />
-            <div className="h-4 bg-slate-200 dark:bg-slate-800 rounded w-11/12" />
-            <div className="h-4 bg-slate-200 dark:bg-slate-800 rounded w-5/6" />
-            <div className="h-4 bg-slate-200 dark:bg-slate-800 rounded w-3/4" />
-          </div>
-        </div>
-      )}
+      {/* Synthesized prose text with AnimatePresence fade-in */}
+      <div className="min-h-[140px] relative">
+        <AnimatePresence mode="wait">
+          {activeText ? (
+            <motion.div
+              key={viewMode}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.25 }}
+              className="space-y-6 pt-2"
+            >
+              {viewMode === "quick" ? (
+                <ul className="space-y-3.5 font-sans text-base text-slate-800 dark:text-slate-200">
+                  {getBulletPoints(activeText).map((point, idx) => (
+                    <li key={idx} className="flex items-start gap-3 leading-relaxed">
+                      <span className="h-1.5 w-1.5 rounded-full bg-indigo-500 dark:bg-indigo-400 shrink-0 mt-2.5" />
+                      <span>{point}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <div className="space-y-6 font-serif text-[18px] leading-relaxed md:leading-loose text-slate-800 dark:text-slate-200">
+                  {paragraphs.map((para, idx) => renderParagraph(para, idx))}
+                </div>
+              )}
+              
+              <div className="mt-6 pt-4 border-t border-slate-200 dark:border-slate-800 flex items-center gap-2">
+                <span className="text-xs font-mono uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                  📡 Report generated by TruthFeed
+                </span>
+              </div>
+            </motion.div>
+          ) : (
+            /* Pulser Skeleton matching 3 paragraphs of text (fallback/safeguard) */
+            <div className="animate-pulse space-y-8 pt-4">
+              <div className="space-y-3">
+                <div className="h-4 bg-slate-200 dark:bg-slate-800 rounded w-full" />
+                <div className="h-4 bg-slate-200 dark:bg-slate-800 rounded w-11/12" />
+                <div className="h-4 bg-slate-200 dark:bg-slate-800 rounded w-4/5" />
+              </div>
+              <div className="space-y-3">
+                <div className="h-4 bg-slate-200 dark:bg-slate-800 rounded w-full" />
+                <div className="h-4 bg-slate-200 dark:bg-slate-800 rounded w-11/12" />
+                <div className="h-4 bg-slate-200 dark:bg-slate-800 rounded w-5/6" />
+                <div className="h-4 bg-slate-200 dark:bg-slate-800 rounded w-3/4" />
+              </div>
+            </div>
+          )}
+        </AnimatePresence>
+      </div>
+
+      {/* Verification Scorecard sitting below the fold / briefing prose */}
+      <VerificationScorecard data={verification} category={category} />
 
       {/* Sources Footer */}
       {sourcesList.length > 0 && (
-        <div className="border-t border-slate-200 dark:border-slate-700 mt-8 pt-4">
-          <div className="text-sm text-slate-500 flex flex-wrap items-center leading-relaxed">
+        <div className="border-t border-slate-200 dark:border-slate-800 mt-8 pt-4">
+          <div className="text-sm text-slate-500 flex flex-wrap items-center leading-relaxed font-sans">
             <span className="mr-1">Sources:</span>
             {sourcesList.map((item: any, idx: number) => (
               <React.Fragment key={idx}>

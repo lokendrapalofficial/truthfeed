@@ -23,10 +23,31 @@ export default function TopStories({
   isVerified,
   isConflicting,
 }: TopStoriesProps) {
-  // Determine dynamic title
+  // Determine dynamic title - Renamed to Trending News
   const title = activeCategory === "foryou" 
-    ? "Top Stories" 
-    : `Top Stories in ${categoryLabel}`;
+    ? "Trending News" 
+    : `Trending News in ${categoryLabel}`;
+
+  // Helper to count unique outlets covering this story
+  const getUniqueOutletsCount = (article: any) => {
+    if (!article) return 0;
+    const outlets = new Set<string>();
+    if (article.sourceName) outlets.add(article.sourceName.toLowerCase().trim());
+    
+    if (article.relatedSources && Array.isArray(article.relatedSources)) {
+      for (const src of article.relatedSources) {
+        if (src.sourceName) outlets.add(src.sourceName.toLowerCase().trim());
+      }
+    }
+    
+    if (article.extraOutlets && Array.isArray(article.extraOutlets)) {
+      for (const src of article.extraOutlets) {
+        if (src.sourceName) outlets.add(src.sourceName.toLowerCase().trim());
+      }
+    }
+    
+    return outlets.size;
+  };
 
   return (
     <div className="pb-8 border-b border-slate-200 dark:border-slate-800/80 animate-fadeIn">
@@ -64,10 +85,18 @@ export default function TopStories({
                     className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
                   />
                   {/* Category overlay chip */}
-                  <div className="absolute top-3 left-3">
+                  <div className="absolute top-3 left-3 flex items-center gap-2">
                     <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-300 bg-white/90 dark:bg-slate-900/90 backdrop-blur-sm border border-indigo-100 dark:border-indigo-800 px-2 py-0.5 rounded-full">
                       {heroArticle.analysis?.category || getArticleCategory(heroArticle.title, heroArticle.summary)}
                     </span>
+                    {(() => {
+                      const count = getUniqueOutletsCount(heroArticle);
+                      return count > 1 ? (
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-white bg-indigo-600/90 border border-indigo-500 px-2 py-0.5 rounded-full shadow-sm">
+                          Covered by {count} outlets
+                        </span>
+                      ) : null;
+                    })()}
                   </div>
                 </div>
 
@@ -118,6 +147,7 @@ export default function TopStories({
           <div className="flex flex-col gap-3">
             {stackArticles.map((article) => {
               const smartDate = formatSmartDate(article.publishedAt);
+              const count = getUniqueOutletsCount(article);
               return (
                 <Link
                   key={article.id}
@@ -137,6 +167,11 @@ export default function TopStories({
                     {isConflicting(article) && (
                       <span className="text-[9px] bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-400 border border-rose-100 dark:border-rose-800/50 px-1.5 py-0.5 rounded-full font-semibold">
                         ⚠️ Conflict
+                      </span>
+                    )}
+                    {count > 1 && (
+                      <span className="text-[9px] bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-850 px-1.5 py-0.5 rounded-full font-semibold">
+                        Covered by {count} outlets
                       </span>
                     )}
                     <span className="text-[9px] text-slate-400 dark:text-slate-500 ml-auto shrink-0 flex items-center gap-0.5">
