@@ -9,6 +9,7 @@ import { useRouter } from "next/navigation";
 import AuthModal from "@/components/AuthModal";
 import UserMenu from "@/components/UserMenu";
 import { fetchNews } from "@/app/actions/fetchNews";
+import { getUserProfile } from "@/app/actions/userActions";
 import { motion } from "framer-motion";
 import BackToTop from "@/components/BackToTop";
 import TransparencyCard from "@/components/TransparencyCard";
@@ -91,6 +92,20 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
     };
   }, [supabase]);
 
+  const [userPrefs, setUserPrefs] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (user?.id) {
+      getUserProfile(user.id).then((res) => {
+        if (res.success && res.user?.preferences) {
+          setUserPrefs(res.user.preferences as string[]);
+        }
+      });
+    } else {
+      setUserPrefs([]);
+    }
+  }, [user]);
+
   const { resolvedTheme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -143,6 +158,23 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
       analysis: art.analysis,
     }));
   }, [initialArticles]);
+
+  const mapPreferenceToCategory = (pref: string): string => {
+    const p = pref.toLowerCase();
+    if (p.includes("geopolitics") || p.includes("world")) return "world";
+    if (p.includes("tech") || p.includes("crypto")) return "technology";
+    if (p.includes("sport")) return "sports";
+    if (p.includes("econom") || p.includes("business")) return "business";
+    if (p.includes("climate") || p.includes("science")) return "science";
+    if (p.includes("entertainment") || p.includes("art")) return "entertainment";
+    if (p.includes("health")) return "health";
+    return "world";
+  };
+
+  const preferredCategories = useMemo(() => {
+    if (userPrefs.length === 0) return [];
+    return Array.from(new Set(userPrefs.map(mapPreferenceToCategory)));
+  }, [userPrefs]);
 
   const filteredArticles = useMemo(() => {
     return allArticles.filter((article) => {
@@ -277,8 +309,21 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
       });
     }
 
+    // Bubble up user's preferred categories when on "For You" landing tab
+    if (activeCategory === "foryou" && preferredCategories.length > 0) {
+      const matching = result.filter(art => {
+        const cat = getArticleCategory(art.title, art.summary || art.content || "");
+        return preferredCategories.includes(cat);
+      });
+      const others = result.filter(art => {
+        const cat = getArticleCategory(art.title, art.summary || art.content || "");
+        return !preferredCategories.includes(cat);
+      });
+      return [...matching, ...others];
+    }
+
     return result;
-  }, [deduplicatedArticles, sortBy, activeCategory]);
+  }, [deduplicatedArticles, sortBy, activeCategory, preferredCategories]);
 
   const showHeroSection = useMemo(() => {
     return activeCategory !== "top" && sortedAndFilteredArticles.length > 0;
@@ -613,8 +658,13 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
                 {/* High Density Main Feed (Below the fold) */}
                 <section className="space-y-6">
                   <div className="border-b border-slate-200 dark:border-slate-800 pb-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                    <h2 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
-                      Latest Updates
+                    <h2 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                      <span>Latest Updates</span>
+                      {activeCategory === "foryou" && preferredCategories.length > 0 && (
+                        <span className="text-[10px] font-mono font-bold text-indigo-650 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-150 dark:border-indigo-800/40 px-2 py-0.5 rounded-full uppercase tracking-wider select-none animate-pulse">
+                          Custom Tailored
+                        </span>
+                      )}
                     </h2>
                     
                     {/* Integrity & Time Sort Toggles */}
