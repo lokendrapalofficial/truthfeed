@@ -211,14 +211,14 @@ export default function TransparencyCard({ article, viewMode = "grid" }: Transpa
               {article.sourceName}
             </span>
             <span className="text-slate-300 dark:text-slate-600">·</span>
-            <div className="flex items-center gap-1 text-[10px] font-mono text-slate-400 dark:text-slate-550">
+            <div className="flex items-center gap-1 text-[10px] font-mono text-slate-400 dark:text-slate-500">
               {smartDate.showRedDot && (
                 <span className="animate-pulse bg-red-500 rounded-full h-1.5 w-1.5 inline-block shrink-0" />
               )}
               <span>{smartDate.text}</span>
             </div>
             <span className="text-slate-300 dark:text-slate-600">·</span>
-            <span className="text-[10px] font-mono text-slate-400 dark:text-slate-555">
+            <span className="text-[10px] font-mono text-slate-400 dark:text-slate-500">
               {estimatedOutlets} Outlets Tracking
             </span>
             <TrustIndicator level={confidenceLevel} />
@@ -296,14 +296,14 @@ export default function TransparencyCard({ article, viewMode = "grid" }: Transpa
             {article.sourceName}
           </span>
           <span className="text-slate-300 dark:text-slate-600">·</span>
-          <div className="flex items-center gap-1 text-[10px] font-mono text-slate-400 dark:text-slate-550">
+          <div className="flex items-center gap-1 text-[10px] font-mono text-slate-400 dark:text-slate-500">
             {smartDate.showRedDot && (
               <span className="animate-pulse bg-red-500 rounded-full h-1.5 w-1.5 inline-block shrink-0" />
             )}
             <span>{smartDate.text}</span>
           </div>
           <span className="text-slate-300 dark:text-slate-600">·</span>
-          <span className="text-[10px] font-mono text-slate-400 dark:text-slate-550">
+          <span className="text-[10px] font-mono text-slate-400 dark:text-slate-500">
             {estimatedOutlets} Outlets Tracking
           </span>
           <TrustIndicator level={confidenceLevel} />

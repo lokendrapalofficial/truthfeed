@@ -288,23 +288,23 @@ export default function ArticleClient({ article, serializedNotes }: ArticleClien
                 };
 
                 return (
-                  <div className="my-6 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-955/30 p-5">
+                  <div className="my-6 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/30 p-5">
                     
                     <div className="mb-4 flex items-center justify-between">
-                      <h3 className="text-sm font-bold uppercase tracking-wider text-slate-505 dark:text-slate-400 flex items-center gap-2">
+                      <h3 className="text-sm font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-2">
                         <span className="h-2 w-2 rounded-full bg-blue-500 animate-pulse"></span>
                         Media Coverage
                       </h3>
-                      <span className="text-xs text-slate-400 dark:text-slate-550">{totalOutlets} Outlets Tracking</span>
+                      <span className="text-xs text-slate-400 dark:text-slate-500">{totalOutlets} Outlets Tracking</span>
                     </div>
 
-                    <div className="divide-y divide-slate-250/60 dark:divide-slate-800/60">
+                    <div className="divide-y divide-slate-200/60 dark:divide-slate-800/60">
                       
                       {/* Main Source Row */}
                       <div className="py-3.5 first:pt-0">
                         <div className="flex items-center gap-2 mb-1 flex-wrap">
-                          <span className="text-xs font-bold text-slate-750 dark:text-zinc-300">{article.sourceName}</span>
-                          <span className="text-[10px] bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-zinc-400 px-1.5 py-0.5 rounded font-mono font-semibold">
+                          <span className="text-xs font-bold text-slate-700 dark:text-slate-300">{article.sourceName}</span>
+                          <span className="text-[10px] bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 px-1.5 py-0.5 rounded font-mono font-semibold">
                             Main Source
                           </span>
                         </div>
@@ -312,7 +312,7 @@ export default function ArticleClient({ article, serializedNotes }: ArticleClien
                           href={article.url}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-sm font-medium text-slate-900 dark:text-zinc-200 hover:text-blue-600 dark:hover:text-blue-400 transition-colors block leading-snug"
+                          className="text-sm font-medium text-slate-900 dark:text-slate-100 hover:text-blue-600 dark:hover:text-blue-400 transition-colors block leading-snug"
                         >
                           {cleanTitle}
                         </a>
@@ -327,13 +327,13 @@ export default function ArticleClient({ article, serializedNotes }: ArticleClien
                         return (
                           <div key={idx} className="py-3.5 last:pb-0">
                             <div className="flex items-center gap-2 mb-1 flex-wrap">
-                              <span className="text-xs font-semibold text-slate-700 dark:text-zinc-400">{item.sourceName}</span>
+                              <span className="text-xs font-semibold text-slate-700 dark:text-slate-350">{item.sourceName}</span>
                               {perspective?.highlight ? (
-                                <span className="text-[10px] bg-indigo-50 dark:bg-indigo-950/40 text-indigo-750 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-800/40 px-1.5 py-0.5 rounded font-medium">
+                                <span className="text-[10px] bg-indigo-50 dark:bg-indigo-950/40 text-indigo-750 dark:text-indigo-450 border border-indigo-100 dark:border-indigo-900/40 px-1.5 py-0.5 rounded font-medium">
                                   Angle: {perspective.highlight}
                                 </span>
                               ) : (
-                                <span className="text-[10px] bg-slate-100 dark:bg-slate-800/60 text-slate-500 dark:text-slate-500 px-1.5 py-0.5 rounded font-medium">
+                                <span className="text-[10px] bg-slate-100 dark:bg-slate-800/60 text-slate-500 dark:text-slate-400 px-1.5 py-0.5 rounded font-medium">
                                   Alternative Coverage
                                 </span>
                               )}
@@ -342,7 +342,7 @@ export default function ArticleClient({ article, serializedNotes }: ArticleClien
                               href={item.url}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="text-sm font-medium text-slate-855 dark:text-zinc-350 hover:text-blue-600 dark:hover:text-blue-400 transition-colors block leading-snug"
+                              className="text-sm font-medium text-slate-800 dark:text-slate-200 hover:text-blue-600 dark:hover:text-blue-400 transition-colors block leading-snug"
                             >
                               {item.title}
                             </a>
