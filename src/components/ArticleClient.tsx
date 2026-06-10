@@ -244,7 +244,7 @@ export default function ArticleClient({ article, serializedNotes }: ArticleClien
               transition={{ duration: 0.5 }}
               className="space-y-6"
             >
-              {/* ——— MEDIA COVERAGE SPECTRUM ——— */}
+              {/* ——— MEDIA COVERAGE ——— */}
               {(() => {
                 const related = article.relatedSources || [];
                 const totalOutlets = related.length + 1;
@@ -263,7 +263,7 @@ export default function ArticleClient({ article, serializedNotes }: ArticleClien
                     <div className="mb-4 flex items-center justify-between">
                       <h3 className="text-sm font-bold uppercase tracking-wider text-slate-505 dark:text-slate-400 flex items-center gap-2">
                         <span className="h-2 w-2 rounded-full bg-blue-500 animate-pulse"></span>
-                        Media Coverage Spectrum
+                        Media Coverage
                       </h3>
                       <span className="text-xs text-slate-400 dark:text-slate-550">{totalOutlets} Outlets Tracking</span>
                     </div>
@@ -290,7 +290,6 @@ export default function ArticleClient({ article, serializedNotes }: ArticleClien
 
                       {/* Related Sources Rows */}
                       {related.map((item: any, idx: number) => {
-                        const domain = getDomain(item.url);
                         const perspective = verificationData?.perspectives?.find(
                           (p: any) => p.sourceName.toLowerCase().trim() === item.sourceName.toLowerCase().trim()
                         );
@@ -298,16 +297,6 @@ export default function ArticleClient({ article, serializedNotes }: ArticleClien
                         return (
                           <div key={idx} className="py-3.5 last:pb-0">
                             <div className="flex items-center gap-2 mb-1 flex-wrap">
-                              {domain && (
-                                <img
-                                  src={`https://www.google.com/s2/favicons?domain=${domain}&sz=64`}
-                                  alt={item.sourceName}
-                                  className="h-3.5 w-3.5 object-contain shrink-0"
-                                  onError={(e) => {
-                                    (e.currentTarget as HTMLImageElement).src = `https://www.google.com/s2/favicons?domain=google.com&sz=64`;
-                                  }}
-                                />
-                              )}
                               <span className="text-xs font-semibold text-slate-700 dark:text-zinc-400">{item.sourceName}</span>
                               {perspective?.highlight ? (
                                 <span className="text-[10px] bg-indigo-50 dark:bg-indigo-950/40 text-indigo-750 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-800/40 px-1.5 py-0.5 rounded font-medium">
@@ -323,7 +312,7 @@ export default function ArticleClient({ article, serializedNotes }: ArticleClien
                               href={item.url}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="text-sm font-medium text-slate-850 dark:text-zinc-350 hover:text-blue-600 dark:hover:text-blue-400 transition-colors block leading-snug"
+                              className="text-sm font-medium text-slate-855 dark:text-zinc-350 hover:text-blue-600 dark:hover:text-blue-400 transition-colors block leading-snug"
                             >
                               {item.title}
                             </a>
