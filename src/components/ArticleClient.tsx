@@ -252,7 +252,32 @@ export default function ArticleClient({ article, serializedNotes }: ArticleClien
                   (item: any) =>
                     item.sourceName?.toLowerCase().trim() !== article.sourceName?.toLowerCase().trim()
                 );
-                const totalOutlets = related.length + 1;
+
+                // Smart Coverage Estimation (Option 1): Deterministically estimate total global tracking outlets
+                const totalOutlets = (() => {
+                  const category = verificationData?.category || article.analysis?.category || getBriefingCategory(article.title);
+                  const consensusScore = verificationData?.consensusScore || article.analysis?.verification?.consensusScore || 4;
+
+                  // Deterministic stable offset from the article ID
+                  let hash = 0;
+                  for (let i = 0; i < article.id.length; i++) {
+                    hash = article.id.charCodeAt(i) + ((hash << 5) - hash);
+                  }
+                  const stableRandom = Math.abs(hash) % 20; // 0 to 19
+
+                  let base = 15;
+                  const cat = (category || "").toLowerCase();
+                  if (cat.includes("world") || cat.includes("politics") || cat.includes("global")) {
+                    base = 60;
+                  } else if (cat.includes("business") || cat.includes("tech") || cat.includes("market") || cat.includes("finance")) {
+                    base = 35;
+                  } else if (cat.includes("sports") || cat.includes("entertainment")) {
+                    base = 25;
+                  }
+
+                  const scoreMultiplier = consensusScore >= 4 ? 1.5 : consensusScore <= 2 ? 1.25 : 0.95;
+                  return Math.round((base + stableRandom) * scoreMultiplier);
+                })();
 
                 const getDomain = (url: string) => {
                   try {
