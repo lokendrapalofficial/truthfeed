@@ -493,6 +493,20 @@ export async function fetchNews() {
           const rawItem = item as any;
           const title = rawItem.title;
           let url = tryDecodeGoogleNewsUrl(rawItem.link);
+
+          // 1. FAST CHECK: If decoded URL is already ingested, skip entirely to save network requests
+          try {
+            const existingDecoded = await prisma.article.findUnique({
+              where: { url },
+              select: { id: true },
+            });
+            if (existingDecoded) {
+              return;
+            }
+          } catch (dbErr) {
+            console.error("[RSS Sync] Database check error (decoded URL):", dbErr);
+          }
+
           const summary = rawItem.contentSnippet || "";
           const content = rawItem.content || rawItem.contentSnippet || "";
           const sourceName = rawItem.source?.text || rawItem.creator || "Google News";
@@ -553,6 +567,20 @@ export async function fetchNews() {
           const realArticleUrl = await resolveGoogleNewsRedirect(rawItem.link);
           if (realArticleUrl) {
             url = realArticleUrl;
+
+            // 2. RESOLVED CHECK: If resolved real URL is already ingested, skip fetching metadata/OG-image
+            try {
+              const existingResolved = await prisma.article.findUnique({
+                where: { url },
+                select: { id: true },
+              });
+              if (existingResolved) {
+                return;
+              }
+            } catch (dbErr) {
+              console.error("[RSS Sync] Database check error (resolved URL):", dbErr);
+            }
+
             const ogImage = await fetchOgImage(realArticleUrl);
             if (ogImage) {
               const sanitized = sanitizeAndUpgradeImageUrl(ogImage);

@@ -89,14 +89,6 @@ export default function TopStories({
                     <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-300 bg-white/90 dark:bg-slate-900/90 backdrop-blur-sm border border-indigo-100 dark:border-indigo-800 px-2 py-0.5 rounded-full">
                       {heroArticle.analysis?.category || getArticleCategory(heroArticle.title, heroArticle.summary)}
                     </span>
-                    {(() => {
-                      const count = getUniqueOutletsCount(heroArticle);
-                      return count > 1 ? (
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-white bg-indigo-600/90 border border-indigo-500 px-2 py-0.5 rounded-full shadow-sm">
-                          Covered by {count} outlets
-                        </span>
-                      ) : null;
-                    })()}
                   </div>
                 </div>
 
@@ -119,9 +111,6 @@ export default function TopStories({
                         )}
                         <span>{formatSmartDate(heroArticle.publishedAt).text}</span>
                       </div>
-                      {isVerified(heroArticle) && (
-                        <span className="text-emerald-600 dark:text-emerald-400 font-semibold">✅ Verified</span>
-                      )}
                       {isConflicting(heroArticle) && (
                         <span className="text-rose-600 dark:text-rose-450 font-semibold">⚠️ Conflicting</span>
                       )}
@@ -153,19 +142,9 @@ export default function TopStories({
                     <span className="text-[9px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">
                       {article.analysis?.category || getArticleCategory(article.title, article.summary)}
                     </span>
-                    {isVerified(article) && (
-                      <span className="text-[9px] bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-800/50 px-1.5 py-0.5 rounded-full font-semibold">
-                        🟢 Verified
-                      </span>
-                    )}
                     {isConflicting(article) && (
                       <span className="text-[9px] bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-400 border border-rose-100 dark:border-rose-800/50 px-1.5 py-0.5 rounded-full font-semibold">
                         ⚠️ Conflict
-                      </span>
-                    )}
-                    {count > 1 && (
-                      <span className="text-[9px] bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-850 px-1.5 py-0.5 rounded-full font-semibold">
-                        Covered by {count} outlets
                       </span>
                     )}
                     <span className="text-[9px] text-slate-400 dark:text-slate-500 ml-auto shrink-0 flex items-center gap-0.5">

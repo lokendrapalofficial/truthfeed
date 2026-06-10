@@ -39,8 +39,8 @@ interface TransparencyCardProps {
 }
 
 function TrustIndicator({ level }: { level?: string }) {
-  // Completely hide PENDING tags from news cards
-  if (!level) {
+  // Completely hide PENDING and VERIFIED tags from news cards
+  if (!level || level === "High") {
     return null;
   }
 
@@ -182,13 +182,6 @@ export default function TransparencyCard({ article, viewMode = "grid" }: Transpa
               <span>{smartDate.text}</span>
             </div>
             <TrustIndicator level={confidenceLevel} />
-            
-            {/* Outlets Count Badge */}
-            {outletsCount > 1 && (
-              <span className="text-[10px] font-mono text-indigo-750 dark:text-indigo-400 font-semibold bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-800/40 px-2 py-0.5 rounded-full select-all">
-                Covered by {outletsCount} outlets
-              </span>
-            )}
           </div>
 
           {/* Headline */}
@@ -270,13 +263,6 @@ export default function TransparencyCard({ article, viewMode = "grid" }: Transpa
             <span>{smartDate.text}</span>
           </div>
           <TrustIndicator level={confidenceLevel} />
-          
-          {/* Outlets Count Badge */}
-          {outletsCount > 1 && (
-            <span className="text-[10px] font-mono text-indigo-750 dark:text-indigo-400 font-semibold bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-800/40 px-2 py-0.5 rounded-full select-all">
-              Covered by {outletsCount} outlets
-            </span>
-          )}
         </div>
 
         {/* Headline */}

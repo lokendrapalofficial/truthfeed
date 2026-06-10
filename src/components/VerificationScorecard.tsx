@@ -53,7 +53,7 @@ export default function VerificationScorecard({ data, category }: VerificationSc
             {pillText}
           </span>
           <span className="text-xs font-mono text-slate-500 dark:text-slate-400">
-            ({data.consensusScore}/5 outlets agree)
+            ({Math.round(data.consensusScore * 20)}/100)
           </span>
         </div>
       </div>

@@ -75,6 +75,7 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const supabase = createClientComponentClient();
   const router = useRouter();
+  const autoSyncAttempted = useRef(false);
 
   useEffect(() => {
     async function getSession() {
@@ -121,6 +122,57 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
       setViewMode(savedView);
     }
   }, []);
+
+  // Client-side automatic background sync on page mount.
+  // If the news is older than 15 minutes, fetch fresh articles in the background silently.
+  useEffect(() => {
+    if (autoSyncAttempted.current) return;
+    autoSyncAttempted.current = true;
+
+    const runBackgroundSync = async () => {
+      // 1. If we have no articles at all, sync immediately
+      if (!initialArticles || initialArticles.length === 0) {
+        console.log("[Auto-Sync] No articles present. Triggering background refresh...");
+        try {
+          const result = await fetchNews();
+          if (result.success) {
+            router.refresh();
+          }
+        } catch (err) {
+          console.error("[Auto-Sync] Silent sync error (no articles):", err);
+        }
+        return;
+      }
+
+      // 2. Find the most recently ingested article (using createdAt)
+      // If we don't have createdAt, fallback to publishedAt
+      const timestamps = initialArticles.map((art) => {
+        const dateStr = art.createdAt || art.publishedAt;
+        return dateStr ? new Date(dateStr).getTime() : 0;
+      }).filter(t => t > 0);
+
+      const latestIngestionTime = timestamps.length > 0 ? Math.max(...timestamps) : 0;
+      const fifteenMinutesAgo = Date.now() - 15 * 60 * 1000;
+
+      // 3. If the newest article is older than 15 minutes, trigger background sync
+      if (latestIngestionTime < fifteenMinutesAgo) {
+        console.log("[Auto-Sync] News feed is older than 15 minutes. Syncing in background...");
+        try {
+          const result = await fetchNews();
+          if (result.success && typeof result.count === "number" && result.count > 0) {
+            console.log(`[Auto-Sync] Background sync completed successfully: fetched ${result.count} new articles.`);
+            router.refresh();
+          } else {
+            console.log("[Auto-Sync] Background sync checked, no new articles found.");
+          }
+        } catch (err) {
+          console.error("[Auto-Sync] Background sync error:", err);
+        }
+      }
+    };
+
+    runBackgroundSync();
+  }, [initialArticles, router]);
 
   const handleViewModeChange = (mode: "grid" | "list") => {
     setViewMode(mode);
