@@ -350,6 +350,12 @@ export default function ArticleClient({ article, serializedNotes }: ArticleClien
                         );
                       })}
 
+                      {totalOutlets > related.length + 1 && (
+                        <div className="py-3.5 last:pb-0 text-xs font-mono text-slate-400 dark:text-slate-500 italic">
+                          ... and {totalOutlets - (related.length + 1)} more global outlets tracking this story
+                        </div>
+                      )}
+
                     </div>
                   </div>
                 );
