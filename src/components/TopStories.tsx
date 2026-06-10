@@ -106,12 +106,6 @@ export default function TopStories({
                     {heroArticle.title}
                   </h3>
 
-                  {heroArticle.analysis?.briefing && (
-                    <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed line-clamp-2 font-sans">
-                      {heroArticle.analysis.briefing}
-                    </p>
-                  )}
-
                   {/* Footer */}
                   <div className="mt-auto pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
                     <div className="flex items-center gap-2 text-xs font-mono text-slate-500 dark:text-slate-400">

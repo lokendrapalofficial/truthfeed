@@ -198,21 +198,6 @@ export default function TransparencyCard({ article, viewMode = "grid" }: Transpa
             </h3>
           </Link>
 
-          {/* Clean Synopsis & Briefing */}
-          <div className="space-y-1.5">
-            {cleanSynopsis && (
-              <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed line-clamp-2 font-sans">
-                <span className="font-bold text-[9px] uppercase tracking-wider text-slate-400 dark:text-slate-500 mr-1.5 select-none">Synopsis:</span>
-                {cleanSynopsis}
-              </p>
-            )}
-            {briefing && (
-              <p className="text-xs text-indigo-600 dark:text-indigo-400 leading-relaxed line-clamp-2 font-sans font-medium">
-                <span className="font-bold text-[9px] uppercase tracking-wider text-indigo-400 dark:text-indigo-500/80 mr-1.5 select-none">Briefing:</span>
-                {briefing}
-              </p>
-            )}
-          </div>
 
           {/* Explain Simply Button */}
           <div className="mt-1">
@@ -301,21 +286,6 @@ export default function TransparencyCard({ article, viewMode = "grid" }: Transpa
           </h3>
         </Link>
 
-        {/* Clean Synopsis & Briefing */}
-        <div className="space-y-1.5">
-          {cleanSynopsis && (
-            <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed line-clamp-2 font-sans">
-              <span className="font-bold text-[9px] uppercase tracking-wider text-slate-400 dark:text-slate-500 mr-1.5 select-none">Synopsis:</span>
-              {cleanSynopsis}
-            </p>
-          )}
-          {briefing && (
-            <p className="text-xs text-indigo-600 dark:text-indigo-400 leading-relaxed line-clamp-2 font-sans font-medium">
-              <span className="font-bold text-[9px] uppercase tracking-wider text-indigo-400 dark:text-indigo-500/80 mr-1.5 select-none">Briefing:</span>
-              {briefing}
-            </p>
-          )}
-        </div>
 
         {/* Divider */}
         <div className="border-t border-slate-100 dark:border-slate-800 pt-2 mt-auto">

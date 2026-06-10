@@ -166,7 +166,6 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
   // Client-side title-similarity deduplication & outlet merging
   const deduplicatedArticles = useMemo(() => {
     const result: any[] = [];
-    const seenTitles = new Set<string>();
     const seenUrls = new Set<string>();
 
     const normalizeTitle = (title: string) => {
@@ -179,58 +178,70 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
         .join(" ");
     };
 
-    for (const art of filteredArticles) {
+    // Pre-calculate normalized titles and word arrays to avoid doing it in a nested loop
+    const normalizedList = filteredArticles.map((art) => {
+      const norm = normalizeTitle(art.title);
+      return {
+        art,
+        norm,
+        words: norm.split(" ").filter(Boolean),
+      };
+    });
+
+    const addedNorms: { norm: string; words: string[]; art: any }[] = [];
+
+    for (const item of normalizedList) {
+      const art = item.art;
       const url = art.url;
       if (seenUrls.has(url)) continue;
 
-      const normTitle = normalizeTitle(art.title);
-      let isDuplicate = false;
-      for (const seen of seenTitles) {
-        const words1 = new Set(normTitle.split(" "));
-        const words2 = new Set(seen.split(" "));
-        if (words1.size === 0 || words2.size === 0) continue;
-        
-        let intersection = 0;
-        for (const w of words1) {
-          if (words2.has(w)) intersection++;
-        }
-        
-        const similarity = intersection / Math.max(words1.size, words2.size);
-        if (similarity > 0.6) {
-          isDuplicate = true;
-          break;
-        }
-      }
+      let duplicateParent: any = null;
+      const words1 = item.words;
+      const len1 = words1.length;
 
-      if (isDuplicate) {
-        // Find parent and merge
-        const parent = result.find(p => {
-          const normP = normalizeTitle(p.title);
-          const words1 = new Set(normTitle.split(" "));
-          const words2 = new Set(normP.split(" "));
+      if (len1 > 0) {
+        for (const added of addedNorms) {
+          const words2 = added.words;
+          const len2 = words2.length;
+          if (len2 === 0) continue;
+
+          // Quick ratio filter: if length ratio > 2.0, similarity can't exceed 0.5 (below 0.6 threshold)
+          if (len1 / len2 > 2.0 || len2 / len1 > 2.0) continue;
+
           let intersection = 0;
-          for (const w of words1) {
-            if (words2.has(w)) intersection++;
+          if (len1 < len2) {
+            for (let i = 0; i < len1; i++) {
+              if (words2.includes(words1[i])) intersection++;
+            }
+          } else {
+            for (let i = 0; i < len2; i++) {
+              if (words1.includes(words2[i])) intersection++;
+            }
           }
-          return (intersection / Math.max(words1.size, words2.size)) > 0.6;
-        });
 
-        if (parent) {
-          if (!parent.extraOutlets) parent.extraOutlets = [];
-          if (!parent.extraOutlets.some((o: any) => o.sourceName.toLowerCase() === art.sourceName.toLowerCase())) {
-            parent.extraOutlets.push({
-              title: art.title,
-              sourceName: art.sourceName,
-              url: art.url
-            });
+          const similarity = intersection / Math.max(len1, len2);
+          if (similarity > 0.6) {
+            duplicateParent = added.art;
+            break;
           }
         }
-        continue;
       }
 
-      seenUrls.add(url);
-      seenTitles.add(normTitle);
-      result.push({ ...art, extraOutlets: [] });
+      if (duplicateParent) {
+        if (!duplicateParent.extraOutlets) duplicateParent.extraOutlets = [];
+        if (!duplicateParent.extraOutlets.some((o: any) => o.sourceName.toLowerCase() === art.sourceName.toLowerCase())) {
+          duplicateParent.extraOutlets.push({
+            title: art.title,
+            sourceName: art.sourceName,
+            url: art.url
+          });
+        }
+      } else {
+        seenUrls.add(url);
+        const newArt = { ...art, extraOutlets: [] };
+        addedNorms.push({ norm: item.norm, words: words1, art: newArt });
+        result.push(newArt);
+      }
     }
     return result;
   }, [filteredArticles]);
