@@ -246,7 +246,12 @@ export default function ArticleClient({ article, serializedNotes }: ArticleClien
             >
               {/* ——— MEDIA COVERAGE ——— */}
               {(() => {
-                const related = article.relatedSources || [];
+                const relatedRaw = article.relatedSources || [];
+                // Filter out related sources that share the same publisher name as the main article
+                const related = relatedRaw.filter(
+                  (item: any) =>
+                    item.sourceName?.toLowerCase().trim() !== article.sourceName?.toLowerCase().trim()
+                );
                 const totalOutlets = related.length + 1;
 
                 const getDomain = (url: string) => {
