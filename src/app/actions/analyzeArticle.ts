@@ -14,7 +14,7 @@ export interface GeminiAnalysisResult {
 export interface VerificationScorecardData {
   coreClaim: string;
   consensusScore: number;
-  confidenceLevel: "High" | "Medium" | "Low" | "Conflicting";
+  confidenceLevel: "High" | "Medium" | "Low" | "Conflicting" | "Single-Source Verified";
   conflictReport: string;
   reasoning: string;
   professionalAudit?: {
@@ -229,6 +229,11 @@ Verification tracking remains active as independent outlets confirm the details.
       // 4. Query Wikipedia summary context for these entities
       const wikiContexts = await fetchWikiContext(entities);
 
+      const uniqueRelated = parsedRelated.filter(
+        (item: any) =>
+          item.sourceName?.toLowerCase().trim() !== article.sourceName?.toLowerCase().trim()
+      );
+
       // 5. Compile the Morning Briefing using Groq
       const auditResponse = await groq.chat.completions.create({
         model: "llama-3.3-70b-versatile",
@@ -258,7 +263,7 @@ Verification tracking remains active as independent outlets confirm the details.
    "verification": {
      "coreClaim": "[The central claim being verified]",
      "consensusScore": [1-5 integer of how many of the 5 outlets agree on the core claim],
-     "confidenceLevel": "High" | "Medium" | "Low" | "Conflicting",
+     "confidenceLevel": "High" | "Medium" | "Low" | "Conflicting" | "Single-Source Verified",
      "conflictReport": "[A 1-sentence summary of any discrepancies, or 'None' if consensus is high]",
      "reasoning": "[A 1-sentence editorial justification for the verdict/consensus score]"
    },
@@ -272,9 +277,24 @@ Verification tracking remains active as independent outlets confirm the details.
           },
           {
             role: "user",
-            content: `Breaking Headline: "${articleTitle}"
+            content: uniqueRelated.length === 0
+              ? `Breaking Headline: "${articleTitle}"
+This story currently has only ONE source (${article.sourceName}) and NO alternative coverage.
+Please write a briefing anchored entirely by this single source.
+
+In your JSON response:
+- For "quickBrief", output exactly: "Single-Source Curation: This report is anchored entirely by ${article.sourceName}. No conflicting reports have been flagged across our network."
+- For "deepDive", write a professional news wire report from the perspective of a single verified source. Do not mention multiple newsrooms or coverage consensus.
+- For "category", classify it.
+- For "verification", set:
+  * "consensusScore": 5
+  * "confidenceLevel": "Single-Source Verified"
+  * "conflictReport": "None"
+  * "reasoning": "Single-source curation from a verified primary publisher."
+- For "perspectives", return an empty array [] since there are no alternative outlets reporting this.`
+              : `Breaking Headline: "${articleTitle}"
 Related coverage headlines:
-${parsedRelated.length > 0 ? parsedRelated.map(s => `- ${s.title} (${s.sourceName})`).join("\n") : "- No alternative coverage reported yet."}
+${uniqueRelated.map(s => `- ${s.title} (${s.sourceName})`).join("\n")}
 
 Wikipedia Entity Context:
 ${wikiContexts.length > 0 ? wikiContexts.map(w => `Entity: ${w.title}\nBackground: ${w.extract}`).join("\n\n") : "No historical entity background returned from Wikipedia."}`
@@ -298,56 +318,75 @@ ${wikiContexts.length > 0 ? wikiContexts.map(w => `Entity: ${w.title}\nBackgroun
       }
 
       const category = parsedBriefing.category || getBriefingCategory(articleTitle);
-      const quickBrief = parsedBriefing.quickBrief || "";
+      let quickBrief = parsedBriefing.quickBrief || "";
       let deepDive = parsedBriefing.deepDive || "";
-
+ 
       // Post-processing safeguard: replace [LOCATION] with selectedLocation if LLM didn't replace it
       if (deepDive.includes("[LOCATION]")) {
         deepDive = deepDive.replace("[LOCATION]", selectedLocation);
       }
-
+ 
       // Read verification values from LLM structured output, falling back to heuristics if missing
       let consensusScore = 3;
-      if (parsedBriefing.verification?.consensusScore !== undefined) {
-        consensusScore = Number(parsedBriefing.verification.consensusScore);
+      let confidenceLevel: "High" | "Medium" | "Low" | "Conflicting" | "Single-Source Verified" = "Medium";
+
+      if (uniqueRelated.length === 0) {
+        consensusScore = 5;
+        confidenceLevel = "Single-Source Verified";
       } else {
-        const scoreMatch = (quickBrief + " " + deepDive).match(/(?:Consensus:\s*|at\s*|out of \d+ major outlets tracking the event,?\s*)(\d+)(?:\s*agree|\/5)/i);
-        if (scoreMatch) {
-          consensusScore = parseInt(scoreMatch[1], 10);
-        } else if (quickBrief.includes("5/5") || quickBrief.includes("5 agree")) {
-          consensusScore = 5;
-        } else if (quickBrief.includes("4/5") || quickBrief.includes("4 agree")) {
-          consensusScore = 4;
-        } else if (quickBrief.includes("2/5") || quickBrief.includes("2 agree")) {
-          consensusScore = 2;
-        } else if (quickBrief.includes("1/5") || quickBrief.includes("1 agree")) {
-          consensusScore = 1;
+        if (parsedBriefing.verification?.consensusScore !== undefined) {
+          consensusScore = Number(parsedBriefing.verification.consensusScore);
+        } else {
+          const scoreMatch = (quickBrief + " " + deepDive).match(/(?:Consensus:\s*|at\s*|out of \d+ major outlets tracking the event,?\s*)(\d+)(?:\s*agree|\/5)/i);
+          if (scoreMatch) {
+            consensusScore = parseInt(scoreMatch[1], 10);
+          } else if (quickBrief.includes("5/5") || quickBrief.includes("5 agree")) {
+            consensusScore = 5;
+          } else if (quickBrief.includes("4/5") || quickBrief.includes("4 agree")) {
+            consensusScore = 4;
+          } else if (quickBrief.includes("2/5") || quickBrief.includes("2 agree")) {
+            consensusScore = 2;
+          } else if (quickBrief.includes("1/5") || quickBrief.includes("1 agree")) {
+            consensusScore = 1;
+          }
+        }
+
+        if (parsedBriefing.verification?.confidenceLevel) {
+          const cl = parsedBriefing.verification.confidenceLevel;
+          if (["High", "Medium", "Low", "Conflicting", "Single-Source Verified"].includes(cl)) {
+            confidenceLevel = cl as any;
+          }
+        } else {
+          const combinedLower = (quickBrief + " " + deepDive).toLowerCase();
+          if (quickBrief.includes("🚨 ALERT") || combinedLower.includes("conflict") || combinedLower.includes("dispute")) {
+            confidenceLevel = "Conflicting";
+          } else if (combinedLower.includes("high") || quickBrief.includes("✅ VERIFIED")) {
+            confidenceLevel = "High";
+          } else if (combinedLower.includes("low")) {
+            confidenceLevel = "Low";
+          }
         }
       }
 
-      let confidenceLevel: "High" | "Medium" | "Low" | "Conflicting" = "Medium";
-      if (parsedBriefing.verification?.confidenceLevel) {
-        const cl = parsedBriefing.verification.confidenceLevel;
-        if (["High", "Medium", "Low", "Conflicting"].includes(cl)) {
-          confidenceLevel = cl as any;
-        }
-      } else {
-        const combinedLower = (quickBrief + " " + deepDive).toLowerCase();
-        if (quickBrief.includes("🚨 ALERT") || combinedLower.includes("conflict") || combinedLower.includes("dispute")) {
-          confidenceLevel = "Conflicting";
-        } else if (combinedLower.includes("high") || quickBrief.includes("✅ VERIFIED")) {
-          confidenceLevel = "High";
-        } else if (combinedLower.includes("low")) {
-          confidenceLevel = "Low";
-        }
+      // Dynamic Wording Template Adjustments for the Text Summary (quickBrief)
+      if (uniqueRelated.length === 0) {
+        quickBrief = `Single-Source Curation: This report is anchored entirely by ${article.sourceName}. No conflicting reports have been flagged across our network.`;
+      } else if (uniqueRelated.length + 1 >= 4 && confidenceLevel === "High") {
+        quickBrief = `High Consensus: ${uniqueRelated.length + 1} major independent newsrooms have cross-verified the baseline facts of this breaking event.`;
+      } else if (confidenceLevel === "Conflicting" || consensusScore < 3.5) {
+        quickBrief = `Divergent Coverage: Core details remain unverified as regional outlets conflict on the final breakdown.`;
       }
 
-      const conflictReport = parsedBriefing.verification?.conflictReport || 
-        (confidenceLevel === "Conflicting" ? "Discrepancies and conflicting accounts flagged in coverage." : "Consensus established across reported sources.");
+      const conflictReport = uniqueRelated.length === 0
+        ? "None"
+        : (parsedBriefing.verification?.conflictReport || 
+           (confidenceLevel === "Conflicting" ? "Discrepancies and conflicting accounts flagged in coverage." : "Consensus established across reported sources."));
 
-      const reasoning = parsedBriefing.verification?.reasoning || 
-        `Out of 5 major outlets tracking the event, ${consensusScore} agree on the baseline facts, though key details remain unverified.`;
-
+      const reasoning = uniqueRelated.length === 0
+        ? "Single-source curation from a verified primary publisher."
+        : (parsedBriefing.verification?.reasoning || 
+           `Out of 5 major outlets tracking the event, ${consensusScore} agree on the baseline facts, though key details remain unverified.`);
+ 
       const verification: VerificationScorecardData = {
         coreClaim: parsedBriefing.verification?.coreClaim || articleTitle,
         consensusScore,
@@ -357,7 +396,7 @@ ${wikiContexts.length > 0 ? wikiContexts.map(w => `Entity: ${w.title}\nBackgroun
         professionalAudit: parsedBriefing.verification?.professionalAudit || null,
         perspectives: parsedBriefing.perspectives || []
       };
-
+ 
       // 6. Query Google Fact Check API for coreClaim
       let professionalAudit = null;
       try {
@@ -373,9 +412,9 @@ ${wikiContexts.length > 0 ? wikiContexts.map(w => `Entity: ${w.title}\nBackgroun
       } catch (fcErr) {
         console.error("Error retrieving professional fact checks:", fcErr);
       }
-
+ 
       verification.professionalAudit = professionalAudit;
-
+ 
       const resultPayload = {
         briefing: quickBrief,
         articleText: deepDive,

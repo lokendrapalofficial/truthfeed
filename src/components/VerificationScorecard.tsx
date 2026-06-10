@@ -17,12 +17,23 @@ export default function VerificationScorecard({ data, category }: VerificationSc
     );
   }
 
-  const isConflict = data.confidenceLevel === "Conflicting" || data.consensusScore < 3.5;
-  const pillText = isConflict ? "Conflicting Reports" : "High Consensus";
-  const pillColor = isConflict 
-    ? "text-rose-700 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/20 border-rose-100 dark:border-rose-900/40"
-    : "text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/20 border-emerald-100 dark:border-emerald-900/40";
-  const dotColor = isConflict ? "bg-rose-500" : "bg-emerald-500";
+  const levelStr = data.confidenceLevel as string;
+  const isSingleSource = levelStr === "Single-Source Verified" || levelStr === "Single Source" || levelStr === "Standalone Report";
+  const isConflict = !isSingleSource && (levelStr === "Conflicting" || data.consensusScore < 3.5);
+
+  let pillText = "High Consensus";
+  let pillColor = "text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/20 border-emerald-100 dark:border-emerald-900/40";
+  let dotColor = "bg-emerald-500";
+
+  if (isSingleSource) {
+    pillText = "Single-Source Verified";
+    pillColor = "text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/20 border-blue-100 dark:border-blue-900/40";
+    dotColor = "bg-blue-500";
+  } else if (isConflict) {
+    pillText = "Conflicting Reports";
+    pillColor = "text-rose-700 dark:text-rose-450 bg-rose-50 dark:bg-rose-950/20 border-rose-100 dark:border-rose-900/40";
+    dotColor = "bg-rose-500";
+  }
 
   return (
     <div className="rounded-xl border border-slate-200/60 dark:border-slate-800/80 bg-slate-50/70 dark:bg-slate-800/40 p-5 space-y-4 transition-colors">
@@ -33,12 +44,14 @@ export default function VerificationScorecard({ data, category }: VerificationSc
         </div>
         <span
           className={`shrink-0 inline-flex items-center text-[9px] font-mono font-bold border px-2.5 py-0.5 rounded-full uppercase tracking-wider ${
-            isConflict
-              ? "text-rose-700 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/30 border-rose-200 dark:border-rose-800"
+            isSingleSource
+              ? "text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800"
+              : isConflict
+              ? "text-rose-700 dark:text-rose-450 bg-rose-50 dark:bg-rose-950/30 border-rose-200 dark:border-rose-800"
               : "text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30 border-emerald-250 dark:border-emerald-800"
           }`}
         >
-          {data.confidenceLevel} CONFIDENCE
+          {isSingleSource ? data.confidenceLevel : `${data.confidenceLevel} CONFIDENCE`}
         </span>
       </div>
 
