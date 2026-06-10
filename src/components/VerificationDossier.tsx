@@ -186,7 +186,7 @@ export default function VerificationDossier({
       </div>
 
       {/* Verification Scorecard sitting below the fold / briefing prose */}
-      <VerificationScorecard data={verification} category={category} />
+      <VerificationScorecard data={verification} category={category} totalSources={sourcesList.length + 1} />
 
       {/* Sources Footer */}
       {sourcesList.length > 0 && (
