@@ -281,7 +281,7 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
   }, [deduplicatedArticles, sortBy, activeCategory]);
 
   const showHeroSection = useMemo(() => {
-    return activeCategory !== "top" && activeCategory !== "foryou" && sortedAndFilteredArticles.length > 0;
+    return activeCategory !== "top" && sortedAndFilteredArticles.length > 0;
   }, [activeCategory, sortedAndFilteredArticles]);
 
   const heroArticle = useMemo(() => {
@@ -444,8 +444,8 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
               {/* Left 12 Columns - Content (Full width since sidebar is removed) */}
               <div className="xl:col-span-12 space-y-10">
                 
-                {/* ── CATEGORIZED TRENDING SECTIONS (For You Tab Only) ── */}
-                {activeCategory === "foryou" && (
+                {/* ── CATEGORIZED TRENDING SECTIONS (Trending News Tab Only) ── */}
+                {activeCategory === "top" && (
                   <div className="space-y-12">
                     {CATEGORIES.filter(c => c.id !== "foryou" && c.id !== "top").map((cat) => {
                       const catArticles = sortedAndFilteredArticles
