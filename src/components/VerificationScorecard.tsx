@@ -38,10 +38,10 @@ export default function VerificationScorecard({ data, category, totalSources }: 
     state = "general";
   }
 
-  let pillText = "General Consensus";
-  let pillColor = "text-amber-700 dark:text-amber-450 bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800/50";
+  let pillText = `${score}% General Consensus`;
+  let pillColor = "text-amber-700 dark:text-amber-455 bg-amber-50 dark:bg-amber-955/20 border-amber-200 dark:border-amber-800/50";
   let dotColor = "bg-amber-500";
-  let scoreDisplay = `(${score}/100)`;
+  let scoreDisplay = "";
   
   let headerTagText = "DEVELOPING STAGE";
   let headerTagColor = "text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800/80 border-slate-200 dark:border-slate-700";
@@ -54,24 +54,24 @@ export default function VerificationScorecard({ data, category, totalSources }: 
     headerTagText = "SYSTEM AUDIT";
     headerTagColor = "text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800/80 border-slate-200 dark:border-slate-700";
   } else if (state === "high") {
-    pillText = "High Consensus";
+    pillText = `${score}% Verified Consensus`;
     pillColor = "text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/20 border-emerald-100 dark:border-emerald-900/40";
     dotColor = "bg-emerald-500";
-    scoreDisplay = `(${score}/100)`;
+    scoreDisplay = "";
     headerTagText = "HIGH CONFIDENCE";
     headerTagColor = "text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30 border-emerald-250 dark:border-emerald-800";
   } else if (state === "general") {
-    pillText = "General Consensus";
-    pillColor = "text-amber-700 dark:text-amber-450 bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800/50";
+    pillText = `${score}% General Consensus`;
+    pillColor = "text-amber-700 dark:text-amber-455 bg-amber-50 dark:bg-amber-955/20 border-amber-200 dark:border-amber-800/50";
     dotColor = "bg-amber-500";
-    scoreDisplay = `(${score}/100)`;
+    scoreDisplay = "";
     headerTagText = "DEVELOPING STAGE";
     headerTagColor = "text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800/80 border-slate-200 dark:border-slate-700";
   } else if (state === "divergent") {
-    pillText = "Conflicting Reports";
+    pillText = `${score}% Divergent Coverage`;
     pillColor = "text-rose-700 dark:text-rose-455 bg-rose-50 dark:bg-rose-950/20 border-rose-100 dark:border-rose-900/40";
     dotColor = "bg-rose-500";
-    scoreDisplay = `(${score}/100)`;
+    scoreDisplay = "";
     headerTagText = "SYSTEM AUDIT";
     headerTagColor = "text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800/80 border-slate-200 dark:border-slate-700";
   }
