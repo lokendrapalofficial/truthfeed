@@ -252,13 +252,13 @@ Verification tracking remains active as independent outlets confirm the details.
      Use: "Out of 5 major outlets tracking the event, 4 agree on the baseline facts, though key details remain unverified."
    * Instead of: "We at TruthFeed are actively auditing these reports to resolve the discrepancies..."
      Use: "Verification tracking is active as outlets independent of local authorities confirm the casualty breakdown."
- - Start Quick Brief with '🚨 ALERT:' if conflicting, or '✅ VERIFIED:' if high consensus. Keep it to 2-3 sentences max. Naturally weave in the consensus (e.g., "Out of 5 major outlets tracking the event, 4 agree on the baseline facts, though key details remain unverified.").
- - For the Deep Dive, structure it as a clean, multi-paragraph news report starting with a location dateline in uppercase (e.g., 'LONDON — ', 'NEW YORK — '). Explain the facts clearly and highlight key discrepancies between source coverage without using robotic meta-commentary.
+  - Start Quick Brief with '🚨 ALERT:' if conflicting, or '✅ VERIFIED:' if high consensus. Keep it to 2-3 sentences max. Naturally weave in the consensus (e.g., "Out of 5 major outlets tracking the event, 4 agree on the baseline facts, though key details remain unverified.").
+  - For the Deep Dive, structure it as a clean, multi-paragraph news report. Do NOT start it with a location dateline (no 'CITY, Country — ' or similar prefix). Just start the story text directly. Explain the facts clearly and highlight key discrepancies between source coverage without using robotic meta-commentary.
   
  OUTPUT JSON FORMAT:
  {
    "quickBrief": "Start with 🚨 ALERT or ✅ VERIFIED. 2-3 sentences max. Explain the main conflict or confirmation. Include a humanized consensus sentence.",
-   "deepDive": "Structure exactly like this: [LOCATION] — [Clear summary of the event]...",
+   "deepDive": "A clean, multi-paragraph news report starting directly with the narrative text (no dateline or location prefix). Explain the facts clearly.",
    "category": "World" | "Sports" | "Tech/Business" | "Entertainment",
    "verification": {
      "coreClaim": "[The central claim being verified]",

@@ -94,7 +94,7 @@ export async function compileBriefing(articleId: string) {
 
         const mockCategory = getBriefingCategory(article.title);
         
-        const mockArticleText = `PARAMARIBO, Suriname — The developments regarding "${article.title.replace(/\s*[-|]\s*[^|]+$/, "")}" have been published across multiple channels. Local authorities and media representatives have confirmed that events are unfolding rapidly, prompting response operations from regional agencies.
+        const mockArticleText = `The developments regarding "${article.title.replace(/\s*[-|]\s*[^|]+$/, "")}" have been published across multiple channels. Local authorities and media representatives have confirmed that events are unfolding rapidly, prompting response operations from regional agencies.
 
 The incident was widely corroborated by international outlets including ${article.sourceName} and global news desks. Journalists are tracking public releases and security updates as verified information continues to emerge from official channels.
 
@@ -185,7 +185,7 @@ STRICT FORMATTING RULES:
 - NO bullet points.
 - NO emojis.
 - NO AI cliches ('delve', 'tapestry', 'crucial').
-- Start the first paragraph with a journalistic dateline (e.g., 'CITY, Country — ').
+- Do NOT start the first paragraph with a dateline or location (no 'CITY, Country — ' or similar prefix). Just start the story text directly.
 - In the second paragraph, naturally cite the corroborating sources (e.g., 'according to BBC, CBS...').
 - In the final paragraph, weave in the background context.
 - Just write beautiful, objective, cohesive journalistic prose.`
