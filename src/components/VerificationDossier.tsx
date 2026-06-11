@@ -156,11 +156,7 @@ export default function VerificationDossier({
     return (
       <p
         key={idx}
-        className={`font-serif text-[18px] leading-relaxed md:leading-loose text-slate-800 dark:text-slate-200 ${
-          idx === 0
-            ? "first-letter:text-4xl first-letter:font-black first-letter:float-left first-letter:mr-2.5 first-letter:mt-1.5 first-letter:text-slate-900 dark:first-letter:text-white first-letter:leading-none"
-            : ""
-        }`}
+        className="font-sans text-base leading-relaxed text-slate-800 dark:text-slate-200"
       >
         {prefix}
         {parts.map((part, pIdx) => {
@@ -230,7 +226,7 @@ export default function VerificationDossier({
                   ))}
                 </ul>
               ) : (
-                <div className="space-y-6 font-serif text-[18px] leading-relaxed md:leading-loose text-slate-800 dark:text-slate-200">
+                <div className="space-y-6 font-sans text-base leading-relaxed text-slate-800 dark:text-slate-200">
                   {paragraphs.map((para, idx) => renderParagraph(para, idx))}
                 </div>
               )}
