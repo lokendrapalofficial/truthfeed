@@ -8,19 +8,13 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export default async function Home() {
-  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-
   // Query articles and sources in parallel from PostgreSQL
   let [articles, sources] = await Promise.all([
     prisma.article.findMany({
-      where: {
-        publishedAt: {
-          gte: sevenDaysAgo,
-        },
-      },
       orderBy: {
         publishedAt: "desc",
       },
+      take: 120,
       include: {
         factChecks: true,
         source: true,
@@ -30,19 +24,17 @@ export default async function Home() {
     prisma.source.findMany(),
   ]);
 
-  // Auto-sync: if DB is nearly empty (e.g. after a reset), fetch fresh articles now
-  if (articles.length < 10) {
-    console.log(`[Auto-sync] Only ${articles.length} articles found — triggering RSS sync...`);
+  // Auto-sync: if DB is completely empty (e.g. after a reset), fetch fresh articles now
+  if (articles.length === 0) {
+    console.log("[Auto-sync] No articles found — triggering bootstrap RSS sync...");
     try {
       const syncResult = await fetchNews();
       console.log(`[Auto-sync] Synced ${syncResult.count ?? 0} new articles.`);
 
       // Re-query after sync so the page renders with the fresh data
       articles = await prisma.article.findMany({
-        where: {
-          publishedAt: { gte: sevenDaysAgo },
-        },
         orderBy: { publishedAt: "desc" },
+        take: 120,
         include: {
           factChecks: true,
           source: true,

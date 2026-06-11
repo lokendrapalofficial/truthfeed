@@ -480,6 +480,26 @@ export async function fetchNews() {
     const uniqueItems = Array.from(uniqueItemsMap.values());
     console.log(`[RSS Sync] Found ${allItems.length} total feed items. Deduplicated to ${uniqueItems.length} unique articles.`);
 
+    // Pre-query all existing decoded URLs in batch to avoid 200+ single queries
+    const feedUrls = uniqueItems.map(item => tryDecodeGoogleNewsUrl(item.link)).filter(Boolean);
+    let existingUrlsSet = new Set<string>();
+    try {
+      const existingArticles = await prisma.article.findMany({
+        where: {
+          url: {
+            in: feedUrls,
+          },
+        },
+        select: {
+          url: true,
+        },
+      });
+      existingUrlsSet = new Set(existingArticles.map((a) => a.url));
+      console.log(`[RSS Sync] Found ${existingUrlsSet.size} of the ${feedUrls.length} feed articles already exist in database.`);
+    } catch (dbErr) {
+      console.error("[RSS Sync] Failed to batch query existing URLs, falling back to individual checks:", dbErr);
+    }
+
     let upsertCount = 0;
 
     // Process unique articles in parallel batches of 5 to run efficiently without database/network timeout
@@ -495,16 +515,8 @@ export async function fetchNews() {
           let url = tryDecodeGoogleNewsUrl(rawItem.link);
 
           // 1. FAST CHECK: If decoded URL is already ingested, skip entirely to save network requests
-          try {
-            const existingDecoded = await prisma.article.findUnique({
-              where: { url },
-              select: { id: true },
-            });
-            if (existingDecoded) {
-              return;
-            }
-          } catch (dbErr) {
-            console.error("[RSS Sync] Database check error (decoded URL):", dbErr);
+          if (existingUrlsSet.has(url)) {
+            return;
           }
 
           const summary = rawItem.contentSnippet || "";
@@ -569,12 +581,17 @@ export async function fetchNews() {
             url = realArticleUrl;
 
             // 2. RESOLVED CHECK: If resolved real URL is already ingested, skip fetching metadata/OG-image
+            if (existingUrlsSet.has(url)) {
+              return;
+            }
+
             try {
               const existingResolved = await prisma.article.findUnique({
                 where: { url },
                 select: { id: true },
               });
               if (existingResolved) {
+                existingUrlsSet.add(url);
                 return;
               }
             } catch (dbErr) {

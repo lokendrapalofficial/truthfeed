@@ -30,32 +30,6 @@ export default function VerificationDossier({
   // Pick text based on selected toggle mode
   const activeText = viewMode === "quick" ? briefing : (articleText || briefing);
 
-  // Helper to render bold text from **text** pattern
-  const renderBoldText = (text: string) => {
-    const boldRegex = /\*\*(.*?)\*\*/g;
-    const parts = [];
-    let lastIndex = 0;
-    let match;
-
-    while ((match = boldRegex.exec(text)) !== null) {
-      if (match.index > lastIndex) {
-        parts.push(text.substring(lastIndex, match.index));
-      }
-      parts.push(
-        <strong key={match.index} className="font-bold text-slate-950 dark:text-white">
-          {match[1]}
-        </strong>
-      );
-      lastIndex = boldRegex.lastIndex;
-    }
-
-    if (lastIndex < text.length) {
-      parts.push(text.substring(lastIndex));
-    }
-
-    return parts.length > 0 ? parts : text;
-  };
-
   // Parse the active text into paragraphs for deep dive
   const paragraphs = activeText
     ? activeText
@@ -176,7 +150,7 @@ export default function VerificationDossier({
                   {getBulletPoints(activeText).map((point, idx) => (
                     <li key={idx} className="flex items-start gap-3 leading-relaxed">
                       <span className="h-1.5 w-1.5 rounded-full bg-indigo-500 dark:bg-indigo-400 shrink-0 mt-2.5" />
-                      <span>{renderBoldText(point)}</span>
+                      <span>{point}</span>
                     </li>
                   ))}
                 </ul>

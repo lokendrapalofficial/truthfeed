@@ -121,7 +121,7 @@ export async function analyzeArticle(
 
         const mockCategory = getBriefingCategory(articleTitle);
         
-        const mockQuickBrief = `**Coverage Timeline:** Reports regarding "${articleTitle.replace(/\s*[-|]\s*[^|]+$/, "")}" have been published across multiple channels. **Source Divergence:** While several outlets confirm key details, others note that the timeline remains unverified. **Active Verification:** Global newsrooms continue to cross-reference statements from primary representatives.`;
+        const mockQuickBrief = `🚨 ALERT: Out of 5 major outlets tracking "${articleTitle.replace(/\s*[-|]\s*[^|]+$/, "")}", coverage diverges on the timeline and key details remain unverified.`;
  
         const mockDeepDive = `${selectedLocation} — Reports on the ground diverge regarding the key details of "${articleTitle.replace(/\s*[-|]\s*[^|]+$/, "")}". A comparison of coverage reveals conflicting accounts.
  
@@ -252,13 +252,13 @@ Verification tracking remains active as independent outlets confirm the details.
      Use: "Out of 5 major outlets tracking the event, 4 agree on the baseline facts, though key details remain unverified."
    * Instead of: "We at TruthFeed are actively auditing these reports to resolve the discrepancies..."
      Use: "Verification tracking is active as outlets independent of local authorities confirm the casualty breakdown."
-  - Write 'quickBrief' as a paragraph of 3 concise sentences, where each sentence focuses on a key factual development of the news story. Start each sentence with a bold theme prefix (e.g., '**Topic:** description.'). Do NOT use list bullet symbols (* or -) or newlines. Do NOT include meta-analysis about TruthFeed, data metrics, source counts, or consensus levels in this text (e.g., do not write '5 outlets agree...'). Just write about the actual news events.
-  - For the Deep Dive, structure it as a clean, multi-paragraph news report. Do NOT start it with a location dateline (no 'CITY, Country — ' or similar prefix). Just start the story text directly. Explain the facts clearly and highlight key discrepancies between source coverage without using robotic meta-commentary.
+ - Start Quick Brief with '🚨 ALERT:' if conflicting, or '✅ VERIFIED:' if high consensus. Keep it to 2-3 sentences max. Naturally weave in the consensus (e.g., "Out of 5 major outlets tracking the event, 4 agree on the baseline facts, though key details remain unverified.").
+ - For the Deep Dive, structure it as a clean, multi-paragraph news report starting with a location dateline in uppercase (e.g., 'LONDON — ', 'NEW YORK — '). Explain the facts clearly and highlight key discrepancies between source coverage without using robotic meta-commentary.
   
  OUTPUT JSON FORMAT:
  {
-   "quickBrief": "A paragraph of 3 sentences summarizing the actual events of the story, with bold prefixes (e.g. '**Topic:** description.'). No meta-analysis or consensus metrics.",
-   "deepDive": "A clean, multi-paragraph news report starting directly with the narrative text (no dateline or location prefix). Explain the facts clearly.",
+   "quickBrief": "Start with 🚨 ALERT or ✅ VERIFIED. 2-3 sentences max. Explain the main conflict or confirmation. Include a humanized consensus sentence.",
+   "deepDive": "Structure exactly like this: [LOCATION] — [Clear summary of the event]...",
    "category": "World" | "Sports" | "Tech/Business" | "Entertainment",
    "verification": {
      "coreClaim": "[The central claim being verified]",
@@ -283,7 +283,7 @@ This story currently has only ONE source (${article.sourceName}) and NO alternat
 Please write a briefing anchored entirely by this single source.
 
 In your JSON response:
-- For "quickBrief", write a paragraph of 3 concise sentences summarizing the actual events/facts of the story. Start each sentence with a bold theme prefix (e.g., '**Topic:** description.'). Do NOT include meta-analysis, source counts, or consensus levels.
+- For "quickBrief", output exactly: "Single-Source Curation: This report is anchored entirely by ${article.sourceName}. No conflicting reports have been flagged across our network."
 - For "deepDive", write a professional news wire report from the perspective of a single verified source. Do not mention multiple newsrooms or coverage consensus.
 - For "category", classify it.
 - For "verification", set:
@@ -368,12 +368,13 @@ ${wikiContexts.length > 0 ? wikiContexts.map(w => `Entity: ${w.title}\nBackgroun
         }
       }
 
-      // Safeguard: If the LLM returns meta-slop or if it is empty, fall back to the scraped article summary
-      const hasMetaSlop = /independent newsrooms|cross-verified|consensus level|desks agree|single-source curation/i.test(quickBrief);
-      if (!quickBrief || hasMetaSlop) {
-        const summaryText = article.summary || article.content || article.title;
-        const cleanSummary = summaryText.length > 300 ? summaryText.slice(0, 300) + "..." : summaryText;
-        quickBrief = `**Story Summary:** ${cleanSummary}`;
+      // Dynamic Wording Template Adjustments for the Text Summary (quickBrief)
+      if (uniqueRelated.length === 0) {
+        quickBrief = `Single-Source Curation: This report is anchored entirely by ${article.sourceName}. No conflicting reports have been flagged across our network.`;
+      } else if (uniqueRelated.length + 1 >= 4 && confidenceLevel === "High") {
+        quickBrief = `High Consensus: ${uniqueRelated.length + 1} major independent newsrooms have cross-verified the baseline facts of this breaking event.`;
+      } else if (confidenceLevel === "Conflicting" || consensusScore < 3.5) {
+        quickBrief = `Divergent Coverage: Core details remain unverified as regional outlets conflict on the final breakdown.`;
       }
 
       const conflictReport = uniqueRelated.length === 0

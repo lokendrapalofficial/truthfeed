@@ -130,12 +130,13 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
     autoSyncAttempted.current = true;
 
     const runBackgroundSync = async () => {
-      // 1. If we have no articles at all, sync immediately
+      // 1. If we have no articles at all, sync immediately (ignoring throttle)
       if (!initialArticles || initialArticles.length === 0) {
         console.log("[Auto-Sync] No articles present. Triggering background refresh...");
         try {
           const result = await fetchNews();
           if (result.success) {
+            localStorage.setItem("truthfeed-last-sync", Date.now().toString());
             router.refresh();
           }
         } catch (err) {
@@ -144,7 +145,17 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
         return;
       }
 
-      // 2. Find the most recently ingested article (using createdAt)
+      // 2. Check localStorage throttle (only run sync at most once every 15 minutes)
+      const lastSyncTimeStr = typeof window !== "undefined" ? localStorage.getItem("truthfeed-last-sync") : null;
+      const lastSyncTime = lastSyncTimeStr ? parseInt(lastSyncTimeStr, 10) : 0;
+      const fifteenMinutes = 15 * 60 * 1000;
+
+      if (Date.now() - lastSyncTime < fifteenMinutes) {
+        console.log("[Auto-Sync] Skipped background sync: Throttled by localStorage (last sync was less than 15m ago).");
+        return;
+      }
+
+      // 3. Find the most recently ingested article (using createdAt)
       // If we don't have createdAt, fallback to publishedAt
       const timestamps = initialArticles.map((art) => {
         const dateStr = art.createdAt || art.publishedAt;
@@ -152,11 +163,13 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
       }).filter(t => t > 0);
 
       const latestIngestionTime = timestamps.length > 0 ? Math.max(...timestamps) : 0;
-      const fifteenMinutesAgo = Date.now() - 15 * 60 * 1000;
+      const fifteenMinutesAgo = Date.now() - fifteenMinutes;
 
-      // 3. If the newest article is older than 15 minutes, trigger background sync
+      // 4. If the newest article is older than 15 minutes, trigger background sync
       if (latestIngestionTime < fifteenMinutesAgo) {
         console.log("[Auto-Sync] News feed is older than 15 minutes. Syncing in background...");
+        // Set last sync timestamp immediately so concurrent mounts don't trigger duplicate syncs
+        localStorage.setItem("truthfeed-last-sync", Date.now().toString());
         try {
           const result = await fetchNews();
           if (result.success && typeof result.count === "number" && result.count > 0) {
@@ -168,6 +181,9 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
         } catch (err) {
           console.error("[Auto-Sync] Background sync error:", err);
         }
+      } else {
+        // If feed is fresh, mark sync time so we don't re-check timestamps on every page load
+        localStorage.setItem("truthfeed-last-sync", Date.now().toString());
       }
     };
 
