@@ -102,7 +102,7 @@ function extractImageFromHtml(html: string): string | null {
 async function resolveGoogleNewsRedirect(googleUrl: string): Promise<string | null> {
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 7000);
+    const timeoutId = setTimeout(() => controller.abort(), 2000);
 
     const res = await fetch(googleUrl, {
       signal: controller.signal,
@@ -386,7 +386,7 @@ function extractMetaValue(html: string, nameOrProperty: string): string | null {
 async function fetchOgImage(pageUrl: string): Promise<string | null> {
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 8000);
+    const timeoutId = setTimeout(() => controller.abort(), 1500);
 
     const res = await fetch(pageUrl, {
       signal: controller.signal,
@@ -453,7 +453,8 @@ export async function fetchNews() {
     const feedPromises = FEED_URLS.map(async (url) => {
       try {
         const feed = await parser.parseURL(url);
-        return feed.items || [];
+        // Only take the top 8 most recent items from each feed to prevent serverless timeouts
+        return (feed.items || []).slice(0, 8);
       } catch (err) {
         console.error(`[RSS Sync] Failed to fetch feed ${url}:`, err);
         return [];
@@ -480,24 +481,24 @@ export async function fetchNews() {
     const uniqueItems = Array.from(uniqueItemsMap.values());
     console.log(`[RSS Sync] Found ${allItems.length} total feed items. Deduplicated to ${uniqueItems.length} unique articles.`);
 
-    // Pre-query all existing decoded URLs in batch to avoid 200+ single queries
-    const feedUrls = uniqueItems.map(item => tryDecodeGoogleNewsUrl(item.link)).filter(Boolean);
-    let existingUrlsSet = new Set<string>();
+    // Pre-query all existing RSS URLs in batch to avoid 200+ single queries
+    const rawFeedUrls = uniqueItems.map(item => item.link).filter(Boolean);
+    let existingRssUrlsSet = new Set<string>();
     try {
       const existingArticles = await prisma.article.findMany({
         where: {
-          url: {
-            in: feedUrls,
+          rssUrl: {
+            in: rawFeedUrls,
           },
         },
         select: {
-          url: true,
+          rssUrl: true,
         },
       });
-      existingUrlsSet = new Set(existingArticles.map((a) => a.url));
-      console.log(`[RSS Sync] Found ${existingUrlsSet.size} of the ${feedUrls.length} feed articles already exist in database.`);
+      existingRssUrlsSet = new Set(existingArticles.map((a) => a.rssUrl).filter(Boolean) as string[]);
+      console.log(`[RSS Sync] Found ${existingRssUrlsSet.size} of the ${rawFeedUrls.length} feed articles already exist in database.`);
     } catch (dbErr) {
-      console.error("[RSS Sync] Failed to batch query existing URLs, falling back to individual checks:", dbErr);
+      console.error("[RSS Sync] Failed to batch query existing RSS URLs, falling back to individual checks:", dbErr);
     }
 
     let upsertCount = 0;
@@ -513,9 +514,10 @@ export async function fetchNews() {
           const rawItem = item as any;
           const title = rawItem.title;
           let url = tryDecodeGoogleNewsUrl(rawItem.link);
+          const rssUrl = rawItem.link;
 
-          // 1. FAST CHECK: If decoded URL is already ingested, skip entirely to save network requests
-          if (existingUrlsSet.has(url)) {
+          // 1. FAST CHECK: If raw Google News RSS URL is already ingested, skip entirely!
+          if (existingRssUrlsSet.has(rssUrl)) {
             return;
           }
 
@@ -581,17 +583,12 @@ export async function fetchNews() {
             url = realArticleUrl;
 
             // 2. RESOLVED CHECK: If resolved real URL is already ingested, skip fetching metadata/OG-image
-            if (existingUrlsSet.has(url)) {
-              return;
-            }
-
             try {
               const existingResolved = await prisma.article.findUnique({
                 where: { url },
                 select: { id: true },
               });
               if (existingResolved) {
-                existingUrlsSet.add(url);
                 return;
               }
             } catch (dbErr) {
@@ -674,10 +671,12 @@ export async function fetchNews() {
               publishedAt,
               sourceId: existingSource ? existingSource.id : null,
               relatedSources: relatedSources as any,
+              rssUrl,
             },
             create: {
               title,
               url,
+              rssUrl,
               content,
               summary,
               imageUrl,

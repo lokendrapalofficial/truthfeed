@@ -12,6 +12,7 @@ model Article {
   id             String          @id @default(cuid())
   title          String
   url            String          @unique
+  rssUrl         String?         @unique
   content        String
   summary        String?
   imageUrl       String?
