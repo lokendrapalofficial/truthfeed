@@ -41,11 +41,69 @@ export default function VerificationDossier({
   // Helper to extract clean bullet points from quick brief text
   const getBulletPoints = (text: string) => {
     if (!text) return [];
+    
+    // Split by newlines first (since each bullet is on its own line)
+    const lines = text.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+    
+    // If we have bullet points separated by newlines, use them
+    if (lines.some(l => l.startsWith("*") || l.startsWith("-") || l.startsWith("•"))) {
+      return lines.map(line => {
+        // Strip leading markdown bullet symbols: *, -, •
+        return line.replace(/^(\s*[-•]\s*|\s*\*(?!\*)\s*|\s*\d+\.\s*)/, "").trim();
+      }).filter(Boolean);
+    }
+    
+    // Fallback: split by sentences if it's a single block of prose
     const cleanText = text.replace(/^(🚨\s*ALERT:?|✅\s*VERIFIED:?)/i, "").trim();
     return cleanText
       .split(/(?<=[.!?])\s+/)
       .map((s) => s.trim())
       .filter((s) => s.length > 5);
+  };
+
+  // Helper to render inline markdown bold formats (e.g. **Title:** Text)
+  const renderBulletText = (point: string) => {
+    const cleanText = point.trim();
+    
+    if (cleanText.includes("**")) {
+      const parts = cleanText.split("**");
+      let title = "";
+      let description = "";
+      
+      if (parts[0].trim() === "") {
+        title = parts[1] || "";
+        description = parts.slice(2).join("**");
+      } else {
+        title = parts[0];
+        description = parts.slice(1).join("**");
+      }
+      
+      const cleanTitle = title.replace(/:\s*$/, "").trim();
+      const cleanDescription = description.trim();
+      
+      return (
+        <span>
+          <strong className="font-bold text-slate-900 dark:text-white">{cleanTitle}:</strong>{" "}
+          {cleanDescription}
+        </span>
+      );
+    }
+    
+    if (cleanText.includes(":")) {
+      const colonIdx = cleanText.indexOf(":");
+      if (colonIdx > 0 && colonIdx < 40) {
+        const title = cleanText.substring(0, colonIdx).trim();
+        const description = cleanText.substring(colonIdx + 1).trim();
+        return (
+          <span>
+            <strong className="font-bold text-slate-900 dark:text-white">{title}:</strong>{" "}
+            {description}
+          </span>
+        );
+      }
+    }
+    
+    return <span>{cleanText}</span>;
   };
 
   // Helper to render paragraph with custom bold prefixes and monospace consensus badge
@@ -150,7 +208,7 @@ export default function VerificationDossier({
                   {getBulletPoints(activeText).map((point, idx) => (
                     <li key={idx} className="flex items-start gap-3 leading-relaxed">
                       <span className="h-1.5 w-1.5 rounded-full bg-indigo-500 dark:bg-indigo-400 shrink-0 mt-2.5" />
-                      <span>{point}</span>
+                      <span>{renderBulletText(point)}</span>
                     </li>
                   ))}
                 </ul>
