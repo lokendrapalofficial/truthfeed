@@ -17,6 +17,13 @@ interface VerificationDossierProps {
   verification: VerificationScorecardData | null;
 }
 
+// Helper to detect and clean geographical datelines (e.g., "NEW YORK —", "TEHRAN, Iran -")
+const cleanEditorialText = (rawText: string) => {
+  if (!rawText) return "";
+  const regex = /^[A-Z\s\.\,]+(?:\s*\([^)]*\))?(?:\s*,\s*[A-Za-z\s\.\,]+)?(?:\s*\([^)]*\))?\s*(?:—|–|--|-|:)\s*/;
+  return rawText.replace(regex, "");
+};
+
 export default function VerificationDossier({
   relatedSources,
   briefing,
@@ -39,13 +46,6 @@ export default function VerificationDossier({
         .map((p) => cleanEditorialText(p))
         .filter(Boolean)
     : [];
-
-  // Helper to detect and clean geographical datelines (e.g., "NEW YORK —", "TEHRAN, Iran -")
-  const cleanEditorialText = (rawText: string) => {
-    if (!rawText) return "";
-    const regex = /^[A-Z\s\.\,]+(?:\s*\([^)]*\))?(?:\s*,\s*[A-Za-z\s\.\,]+)?(?:\s*\([^)]*\))?\s*(?:—|–|--|-|:)\s*/;
-    return rawText.replace(regex, "");
-  };
 
   // Helper to extract clean bullet points from quick brief text
   const getBulletPoints = (text: string) => {
