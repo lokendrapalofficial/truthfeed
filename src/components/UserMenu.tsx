@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useEffect } from "react";
 import Link from "next/link";
-import { LogOut, Settings, Award, Compass } from "lucide-react";
+import { LogOut, Settings, Award, Compass, Bookmark } from "lucide-react";
 import { createClientComponentClient } from "@/lib/supabase";
 
 interface UserMenuProps {
@@ -81,7 +81,16 @@ export default function UserMenu({ user, onSignOut }: UserMenuProps) {
             </Link>
 
             <Link
-              href="/settings"
+              href="/dashboard/bookmarks"
+              onClick={() => setIsOpen(false)}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium text-slate-700 dark:text-slate-350 hover:bg-slate-50 dark:hover:bg-slate-850 hover:text-slate-900 dark:hover:text-slate-100 transition-colors"
+            >
+              <Bookmark className="h-4 w-4 text-slate-400" />
+              <span>My Bookmarks</span>
+            </Link>
+
+            <Link
+              href="/dashboard/settings"
               onClick={() => setIsOpen(false)}
               className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium text-slate-700 dark:text-slate-350 hover:bg-slate-50 dark:hover:bg-slate-850 hover:text-slate-900 dark:hover:text-slate-100 transition-colors"
             >

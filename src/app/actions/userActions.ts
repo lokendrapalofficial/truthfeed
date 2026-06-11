@@ -29,3 +29,20 @@ export async function updateUserPreferences(userId: string, preferences: string[
     return { success: false, error: error.message };
   }
 }
+
+export async function updateUserProfileSettings(userId: string, name: string, region: string) {
+  try {
+    const user = await prisma.user.update({
+      where: { id: userId },
+      data: {
+        name,
+        region,
+      },
+    });
+    return { success: true, user };
+  } catch (error: any) {
+    console.error("Error updating user profile settings:", error);
+    return { success: false, error: error.message || String(error) };
+  }
+}
+

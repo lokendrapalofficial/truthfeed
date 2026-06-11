@@ -1,12 +1,14 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import { ChevronDown, ChevronUp, Brain, Clock } from "lucide-react";
+import { ChevronDown, ChevronUp, Brain, Clock, Bookmark as BookmarkIcon } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import NewsImage from "@/components/NewsImage";
 import { formatSmartDate } from "@/lib/utils";
 import { explainSimply } from "@/app/actions/explainSimply";
+import { toggleBookmark } from "@/app/actions/bookmarkActions";
+import { createClientComponentClient } from "@/lib/supabase";
 
 interface TransparencyCardProps {
   article: {
@@ -36,6 +38,8 @@ interface TransparencyCardProps {
     } | null;
   };
   viewMode?: "grid" | "list";
+  isBookmarked?: boolean;
+  onToggleBookmark?: (articleId: string, newState: boolean) => void;
 }
 
 function getBriefingCategory(title: string): string {
@@ -112,10 +116,47 @@ function TrustIndicator({ level }: { level?: string }) {
   );
 }
 
-export default function TransparencyCard({ article, viewMode = "grid" }: TransparencyCardProps) {
+export default function TransparencyCard({ article, viewMode = "grid", isBookmarked = false, onToggleBookmark }: TransparencyCardProps) {
   const [isExplainOpen, setIsExplainOpen] = useState(false);
   const [explainState, setExplainState] = useState<"idle" | "loading" | "done" | "error">("idle");
   const [explanation, setExplanation] = useState<string | null>(null);
+  const [bookmarked, setBookmarked] = useState(isBookmarked);
+
+  const supabase = createClientComponentClient();
+
+  useEffect(() => {
+    setBookmarked(isBookmarked);
+  }, [isBookmarked]);
+
+  const handleBookmarkClick = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      alert("Please sign in to bookmark articles.");
+      return;
+    }
+
+    const prev = bookmarked;
+    setBookmarked(!prev);
+
+    try {
+      const res = await toggleBookmark(article.id);
+      if (res.success) {
+        setBookmarked(res.isBookmarked || false);
+        if (onToggleBookmark) {
+          onToggleBookmark(article.id, res.isBookmarked || false);
+        }
+      } else {
+        setBookmarked(prev);
+        alert(res.error || "Failed to update bookmark.");
+      }
+    } catch {
+      setBookmarked(prev);
+      alert("An unexpected error occurred.");
+    }
+  };
 
   const smartDate = formatSmartDate(article.publishedAt);
   const confidenceLevel = article.analysis?.verification?.confidenceLevel;
@@ -201,6 +242,13 @@ export default function TransparencyCard({ article, viewMode = "grid" }: Transpa
             isThematic={article.isThematic}
             className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
           />
+          <button
+            onClick={handleBookmarkClick}
+            className="absolute top-1 right-1 p-1 rounded-full bg-white/80 dark:bg-slate-900/80 hover:bg-white dark:hover:bg-slate-900 text-slate-650 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 shadow-sm border border-slate-200/50 dark:border-slate-800/50 transition-all z-10 cursor-pointer scale-90"
+            title={bookmarked ? "Remove Bookmark" : "Bookmark Story"}
+          >
+            <BookmarkIcon className={`h-3.5 w-3.5 ${bookmarked ? "fill-blue-600 dark:fill-blue-500 text-blue-600 dark:text-blue-500" : ""}`} />
+          </button>
         </div>
 
         {/* Content */}
@@ -286,6 +334,13 @@ export default function TransparencyCard({ article, viewMode = "grid" }: Transpa
           isThematic={article.isThematic}
           className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-103"
         />
+        <button
+          onClick={handleBookmarkClick}
+          className="absolute top-2.5 right-2.5 p-1.5 rounded-full bg-white/80 dark:bg-slate-900/80 hover:bg-white dark:hover:bg-slate-900 text-slate-650 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 shadow-sm border border-slate-200/50 dark:border-slate-800/50 transition-all z-10 cursor-pointer"
+          title={bookmarked ? "Remove Bookmark" : "Bookmark Story"}
+        >
+          <BookmarkIcon className={`h-4.5 w-4.5 ${bookmarked ? "fill-blue-600 dark:fill-blue-500 text-blue-600 dark:text-blue-500" : ""}`} />
+        </button>
       </div>
 
       {/* Card Body */}

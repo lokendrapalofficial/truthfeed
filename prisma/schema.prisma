@@ -28,6 +28,7 @@ model Article {
   relatedSources Json?
   analysis       Analysis?
   savedBy        User[]
+  bookmarks      Bookmark[]
 }
 
 model Source {
@@ -77,11 +78,13 @@ model User {
   id             String          @id @default(uuid())
   email          String          @unique
   name           String?
+  region         String          @default("GLOBAL")
   preferences    Json?           // Stores array of selected interests like ["Tech Markets", "Geopolitics"]
   isPro          Boolean         @default(false)
   createdAt      DateTime        @default(now())
   articles       Article[]       // Relation to saved/bookmarked articles
   communityNotes CommunityNote[]
+  bookmarks      Bookmark[]
 }
 
 model CommunityNote {
@@ -108,4 +111,15 @@ model Analysis {
   articleText  String?
   verification Json?
   createdAt    DateTime @default(now())
+}
+
+model Bookmark {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  articleId String
+  article   Article  @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, articleId])
 }

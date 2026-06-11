@@ -1,11 +1,12 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Search, Globe, Award, HelpCircle, User, LogIn, Sun, Moon } from "lucide-react";
+import { Search, Globe, Award, HelpCircle, User, LogIn, Sun, Moon, Bookmark } from "lucide-react";
 import { createClientComponentClient } from "@/lib/supabase";
 import { useTheme } from "next-themes";
 import AuthModal from "@/components/AuthModal";
 import UserMenu from "@/components/UserMenu";
+import Link from "next/link";
 
 interface NavbarProps {
   searchQuery: string;
@@ -110,6 +111,16 @@ export default function Navbar({
               <HelpCircle className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">About</span>
             </button>
+
+            {user && (
+              <Link
+                href="/dashboard/bookmarks"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold tracking-wide transition-all duration-200 cursor-pointer text-zinc-550 dark:text-slate-400 hover:bg-zinc-100 dark:hover:bg-slate-800 hover:text-zinc-800 dark:hover:text-slate-200"
+              >
+                <Bookmark className="h-3.5 w-3.5" />
+                <span>Bookmarks</span>
+              </Link>
+            )}
 
             {/* Theme Toggle Button */}
             <button

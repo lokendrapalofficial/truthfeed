@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo, useTransition, useEffect, useRef } from "react";
 import Link from "next/link";
-import { Search, RefreshCw, Sun, Moon, LayoutGrid, List } from "lucide-react";
+import { Search, RefreshCw, Sun, Moon, LayoutGrid, List, Bookmark } from "lucide-react";
 import { createClientComponentClient } from "@/lib/supabase";
 import { useTheme } from "next-themes";
 import { useRouter } from "next/navigation";
@@ -10,6 +10,7 @@ import AuthModal from "@/components/AuthModal";
 import UserMenu from "@/components/UserMenu";
 import { fetchNews } from "@/app/actions/fetchNews";
 import { getUserProfile } from "@/app/actions/userActions";
+import { toggleBookmark, getUserBookmarkIds } from "@/app/actions/bookmarkActions";
 import { motion } from "framer-motion";
 import BackToTop from "@/components/BackToTop";
 import TransparencyCard from "@/components/TransparencyCard";
@@ -94,6 +95,7 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
   }, [supabase]);
 
   const [userPrefs, setUserPrefs] = useState<string[]>([]);
+  const [bookmarkIds, setBookmarkIds] = useState<string[]>([]);
 
   useEffect(() => {
     if (user?.id) {
@@ -102,10 +104,53 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
           setUserPrefs(res.user.preferences as string[]);
         }
       });
+      getUserBookmarkIds().then((res) => {
+        if (res.success) {
+          setBookmarkIds(res.bookmarkIds || []);
+        }
+      });
     } else {
       setUserPrefs([]);
+      setBookmarkIds([]);
     }
   }, [user]);
+
+  const handleBookmarkClick = async (e: React.MouseEvent, articleId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      setIsAuthModalOpen(true);
+      return;
+    }
+
+    const prev = bookmarkIds;
+    const isSaved = prev.includes(articleId);
+
+    if (isSaved) {
+      setBookmarkIds(prev.filter((id) => id !== articleId));
+    } else {
+      setBookmarkIds([...prev, articleId]);
+    }
+
+    try {
+      const res = await toggleBookmark(articleId);
+      if (res.success) {
+        if (res.isBookmarked) {
+          setBookmarkIds((prev) => (prev.includes(articleId) ? prev : [...prev, articleId]));
+        } else {
+          setBookmarkIds((prev) => prev.filter((id) => id !== articleId));
+        }
+      } else {
+        setBookmarkIds(prev);
+        alert(res.error || "Failed to update bookmark.");
+      }
+    } catch {
+      setBookmarkIds(prev);
+      alert("An unexpected error occurred.");
+    }
+  };
 
   const { resolvedTheme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
@@ -476,6 +521,16 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
 
             {/* Right: Profile Actions / Sync Trigger */}
             <div className="flex items-center gap-3">
+              {user && (
+                <Link
+                  href="/dashboard/bookmarks"
+                  className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 transition-colors cursor-pointer"
+                  title="My Bookmarks"
+                >
+                  <Bookmark className="h-4.5 w-4.5" />
+                </Link>
+              )}
+
               <button
                 onClick={handleRefresh}
                 disabled={isPending}
@@ -634,7 +689,18 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
                           {restStories.length === 0 ? (
                             // Only 1 article, render single large card
                             <div className="max-w-xl">
-                              <TransparencyCard article={mainStory} viewMode="grid" />
+                              <TransparencyCard 
+                                article={mainStory} 
+                                viewMode="grid" 
+                                isBookmarked={bookmarkIds.includes(mainStory.id)}
+                                onToggleBookmark={(id, isSaved) => {
+                                  if (isSaved) {
+                                    setBookmarkIds((prev) => [...prev, id]);
+                                  } else {
+                                    setBookmarkIds((prev) => prev.filter((item) => item !== id));
+                                  }
+                                }}
+                              />
                             </div>
                           ) : (
                             <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-stretch">
@@ -655,6 +721,13 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
                                       isThematic={mainStory.isThematic}
                                       className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-103"
                                     />
+                                    <button
+                                      onClick={(e) => handleBookmarkClick(e, mainStory.id)}
+                                      className="absolute top-2.5 right-2.5 p-1.5 rounded-full bg-white/80 dark:bg-slate-900/80 hover:bg-white dark:hover:bg-slate-900 text-slate-605 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 shadow-sm border border-slate-200/50 dark:border-slate-800/50 transition-all z-10 cursor-pointer"
+                                      title={bookmarkIds.includes(mainStory.id) ? "Remove Bookmark" : "Bookmark Story"}
+                                    >
+                                      <Bookmark className={`h-4.5 w-4.5 ${bookmarkIds.includes(mainStory.id) ? "fill-blue-600 dark:fill-blue-500 text-blue-600 dark:text-blue-500" : ""}`} />
+                                    </button>
                                   </div>
                                   
                                   {/* Body */}
@@ -798,7 +871,19 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
                     <>
                       <div className={viewMode === "grid" ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6" : "flex flex-col gap-4 max-w-5xl"}>
                         {feedArticles.map((article) => (
-                          <TransparencyCard key={article.id} article={article} viewMode={viewMode} />
+                          <TransparencyCard 
+                            key={article.id} 
+                            article={article} 
+                            viewMode={viewMode} 
+                            isBookmarked={bookmarkIds.includes(article.id)}
+                            onToggleBookmark={(id, isSaved) => {
+                              if (isSaved) {
+                                setBookmarkIds((prev) => [...prev, id]);
+                              } else {
+                                setBookmarkIds((prev) => prev.filter((item) => item !== id));
+                              }
+                            }}
+                          />
                         ))}
                       </div>
 
