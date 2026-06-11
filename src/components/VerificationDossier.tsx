@@ -251,7 +251,7 @@ export default function VerificationDossier({
                       <div className="space-y-0.5">
                         <span className="text-[10px] text-slate-400 dark:text-slate-500 uppercase font-bold tracking-wider">Key Cross-Reference</span>
                         <p className="text-xs font-bold text-slate-855 dark:text-slate-350 truncate">
-                          {[sourceName, ...sourcesList.map(s => s.sourceName)].slice(0, 3).join(" • ") || "Primary desk"}
+                          {[...new Set([sourceName, ...sourcesList.map((s: any) => s.sourceName || s.name)].filter(Boolean))].slice(0, 3).join(" • ") || "Primary desk"}
                         </p>
                       </div>
                     </div>
