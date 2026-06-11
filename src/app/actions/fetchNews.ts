@@ -694,6 +694,45 @@ export async function fetchNews() {
       );
     }
 
+    // Prune old articles (older than 14 days) to prevent hitting Supabase 500MB limits
+    try {
+      const fourteenDaysAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
+      const oldArticles = await prisma.article.findMany({
+        where: {
+          publishedAt: {
+            lt: fourteenDaysAgo,
+          },
+        },
+        select: {
+          id: true,
+        },
+      });
+      const oldArticleIds = oldArticles.map((a) => a.id);
+
+      if (oldArticleIds.length > 0) {
+        // 1. Clean up FactChecks first (since they lack cascade deletion in schema)
+        await prisma.factCheck.deleteMany({
+          where: {
+            relatedArticleId: {
+              in: oldArticleIds,
+            },
+          },
+        });
+
+        // 2. Delete the old articles (Prisma handles implicit join tables for savedBy)
+        const deleteResult = await prisma.article.deleteMany({
+          where: {
+            id: {
+              in: oldArticleIds,
+            },
+          },
+        });
+        console.log(`[Database Pruning] Successfully pruned ${deleteResult.count} articles older than 14 days.`);
+      }
+    } catch (pruneErr) {
+      console.error("[Database Pruning] Failed to prune old articles:", pruneErr);
+    }
+
     try {
       revalidatePath("/");
     } catch (e) {
