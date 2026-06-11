@@ -123,11 +123,11 @@ export async function analyzeArticle(
         
         const mockQuickBrief = `🚨 ALERT: Out of 5 major outlets tracking "${articleTitle.replace(/\s*[-|]\s*[^|]+$/, "")}", coverage diverges on the timeline and key details remain unverified.`;
  
-        const mockDeepDive = `${selectedLocation} — Reports on the ground diverge regarding the key details of "${articleTitle.replace(/\s*[-|]\s*[^|]+$/, "")}". A comparison of coverage reveals conflicting accounts.
+        const mockDeepDive = `${selectedLocation} — Tactical reports confirm direct action has commenced regarding "${articleTitle.replace(/\s*[-|]\s*[^|]+$/, "")}". Operational details indicate immediate measures were taken at the target location, though verification of initial outcomes is still in progress as observers assess the immediate damage.
  
-While ${article.sourceName} reported immediate official confirmation, alternative sources cite conflicting narratives.
+Financial and commodity markets reacted immediately, with energy futures shifting in early trading and broader stock index futures experiencing brief volatility as global commodity networks adjusted to the heightened security alerts.
  
-Verification tracking remains active as independent outlets confirm the details. The consensus is split with 2 out of 5 major outlets agreeing on the baseline facts.`;
+Geopolitical reactions have emerged rapidly, with regional security experts expressing concern over escalation risks. While national authorities urge caution, international allies are coordinating to assess potential implications on security arrangements in the region.`;
 
         const mockPerspectives = (parsedRelated as any[]).map((src: any) => ({
           sourceName: src.sourceName,
@@ -252,13 +252,18 @@ Verification tracking remains active as independent outlets confirm the details.
      Use: "Out of 5 major outlets tracking the event, 4 agree on the baseline facts, though key details remain unverified."
    * Instead of: "We at TruthFeed are actively auditing these reports to resolve the discrepancies..."
      Use: "Verification tracking is active as outlets independent of local authorities confirm the casualty breakdown."
- - STRICT SUMMARY RULE: The 'quickBrief' must summarize the actual journalistic events, plot points, or news facts of the article content. Do not include meta-analysis about TruthFeed, data metrics, source counts, or consensus levels in this text (e.g., Do NOT write '5 outlets agree...' or 'High consensus shows...'). Start directly with 2-3 concise bullet points (using markdown '*') summarizing what happened in the story, incorporating links to the relevant source articles where appropriate.
- - For the Deep Dive, structure it as a clean, multi-paragraph news report starting with a location dateline in uppercase (e.g., 'LONDON — ', 'NEW YORK — '). Explain the facts clearly and highlight key discrepancies between source coverage without using robotic meta-commentary.
+  - STRICT SUMMARY RULE: The 'quickBrief' must summarize the actual journalistic events, plot points, or news facts of the article content. Do not include meta-analysis about TruthFeed, data metrics, source counts, or consensus levels in this text (e.g., Do NOT write '5 outlets agree...' or 'High consensus shows...'). Start directly with 2-3 concise bullet points (using markdown '*') summarizing what happened in the story, incorporating links to the relevant source articles where appropriate.
+  - For the Deep Dive, you must strictly follow this editorial rule:
+    STRICT EDITORIAL RULE: The 'deepDive' must be a comprehensive, long-form journalistic analysis of minimum 3 paragraphs. Do not write a generic summary. You must format the response into three distinct paragraphs separated by double line breaks ('\n\n'), strictly following this blueprint:
+    * Paragraph 1 (The Fact Breakdown): Focus on the operational and tactical details of the events (e.g., what occurred, who is involved, the immediate targets or tactical facts).
+    * Paragraph 2 (Economic & Market Impact): Detail any financial market reactions, economic implications, percentage shifts in index futures, price movements in crude oil/assets, or broader cost/livelihood impacts.
+    * Paragraph 3 (Geopolitical Alignment): Analyze how regional/global networks, governments, or state entities are reacting, highlighting discrepancies in coverage or security anxieties moving forward.
+    Start the first paragraph with a location dateline in uppercase (e.g., 'LONDON — ', 'NEW YORK — ').
   
  OUTPUT JSON FORMAT:
  {
    "quickBrief": "Bulleted list starting directly with '*' summarizing the actual journalistic events of the story (2-3 bullet points max). Do not include any meta-analysis or source counts. Example format: * **Highlight Title:** Summary detail...\\n* **Another Highlight:** Other details...",
-   "deepDive": "Structure exactly like this: [LOCATION] — [Clear summary of the event]...",
+   "deepDive": "Structure exactly like this: [LOCATION] — [Three distinct paragraphs separated by double line breaks as per the STRICT EDITORIAL RULE]...",
    "category": "World" | "Sports" | "Tech/Business" | "Entertainment",
    "verification": {
      "coreClaim": "[The central claim being verified]",
@@ -285,7 +290,7 @@ Please write a briefing anchored entirely by this single source.
 
 In your JSON response:
 - For "quickBrief", output a 2-3 bullet point news summary of the actual journalistic events, plot points, or news facts of the article content, starting directly with bullet points '*'. Do not include meta-analysis or source counts.
-- For "deepDive", write a professional news wire report from the perspective of a single verified source. Do not mention multiple newsrooms or coverage consensus.
+- For "deepDive", write a professional news wire report from the perspective of a single verified source, strictly following the 3-paragraph blueprint (Fact Breakdown, Economic/Market Impact, Geopolitical Alignment) separated by double line breaks '\n\n'. Do not mention multiple newsrooms or coverage consensus.
 - For "category", classify it.
 - For "verification", set:
   * "consensusScore": 5

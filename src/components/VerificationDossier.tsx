@@ -23,6 +23,7 @@ export default function VerificationDossier({
   articleText,
   verification,
   category,
+  sourceName,
 }: VerificationDossierProps) {
   const [viewMode, setViewMode] = useState<"quick" | "deep">("quick");
   const sourcesList = Array.isArray(relatedSources) ? relatedSources : [];
@@ -35,6 +36,7 @@ export default function VerificationDossier({
     ? activeText
         .split(/\n\s*\n/)
         .map((p) => p.trim())
+        .map((p) => cleanEditorialText(p))
         .filter(Boolean)
     : [];
 
@@ -226,8 +228,43 @@ export default function VerificationDossier({
                   ))}
                 </ul>
               ) : (
-                <div className="space-y-6 font-sans text-base leading-relaxed text-slate-800 dark:text-slate-200">
-                  {paragraphs.map((para, idx) => renderParagraph(para, idx))}
+                <div className="space-y-5 font-sans text-base leading-relaxed text-slate-800 dark:text-slate-200">
+                  {/* Paragraph 1: Operational Tactical Facts */}
+                  {paragraphs[0] && renderParagraph(paragraphs[0], 0)}
+
+                  {/* HIGH-END INTERACTIVE CONTEXT CARD (Sandwiched right into the narrative) */}
+                  <div className="my-6 border border-slate-200 dark:border-slate-800/85 bg-slate-50/70 dark:bg-slate-950/60 rounded-xl p-4.5 shadow-md">
+                    <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800/80 pb-2.5 mb-3">
+                      <span className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulse" />
+                      <span className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">
+                        TruthFeed Intelligence Desk
+                      </span>
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-0.5">
+                        <span className="text-[10px] text-slate-400 dark:text-slate-500 uppercase font-bold tracking-wider">Consensus Stream</span>
+                        <p className="text-xs font-bold text-slate-855 dark:text-slate-350">
+                          {verification ? `${verification.consensusScore}/5 desks agree` : `${sourcesList.length + 1} outlets audited`}
+                        </p>
+                      </div>
+                      <div className="space-y-0.5">
+                        <span className="text-[10px] text-slate-400 dark:text-slate-500 uppercase font-bold tracking-wider">Key Cross-Reference</span>
+                        <p className="text-xs font-bold text-slate-855 dark:text-slate-350 truncate">
+                          {[sourceName, ...sourcesList.map(s => s.sourceName)].slice(0, 3).join(" • ") || "Primary desk"}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Paragraph 2: Financial Market Impact */}
+                  {paragraphs[1] && renderParagraph(paragraphs[1], 1)}
+
+                  {/* Paragraph 3: Global Reactions & Security Anxieties */}
+                  {paragraphs[2] && renderParagraph(paragraphs[2], 2)}
+                  
+                  {/* Fallback for additional paragraphs if any */}
+                  {paragraphs.slice(3).map((para, idx) => renderParagraph(para, idx + 3))}
                 </div>
               )}
               
