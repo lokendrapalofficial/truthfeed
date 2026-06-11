@@ -38,6 +38,13 @@ export default function VerificationDossier({
         .filter(Boolean)
     : [];
 
+  // Helper to detect and clean geographical datelines (e.g., "NEW YORK —", "TEHRAN, Iran -")
+  const cleanEditorialText = (rawText: string) => {
+    if (!rawText) return "";
+    const regex = /^[A-Z\s\.\,]+(?:\s*\([^)]*\))?(?:\s*,\s*[A-Za-z\s\.\,]+)?(?:\s*\([^)]*\))?\s*(?:—|–|--|-|:)\s*/;
+    return rawText.replace(regex, "");
+  };
+
   // Helper to extract clean bullet points from quick brief text
   const getBulletPoints = (text: string) => {
     if (!text) return [];
@@ -49,7 +56,8 @@ export default function VerificationDossier({
     if (lines.some(l => l.startsWith("*") || l.startsWith("-") || l.startsWith("•"))) {
       return lines.map(line => {
         // Strip leading markdown bullet symbols: *, -, •
-        return line.replace(/^(\s*[-•]\s*|\s*\*(?!\*)\s*|\s*\d+\.\s*)/, "").trim();
+        const stripped = line.replace(/^(\s*[-•]\s*|\s*\*(?!\*)\s*|\s*\d+\.\s*)/, "").trim();
+        return cleanEditorialText(stripped);
       }).filter(Boolean);
     }
     
@@ -58,6 +66,7 @@ export default function VerificationDossier({
     return cleanText
       .split(/(?<=[.!?])\s+/)
       .map((s) => s.trim())
+      .map((s) => cleanEditorialText(s))
       .filter((s) => s.length > 5);
   };
 
@@ -111,6 +120,10 @@ export default function VerificationDossier({
     let prefix: React.ReactNode = null;
     let restText = para;
 
+    if (idx === 0) {
+      restText = cleanEditorialText(para);
+    }
+
     const alertRegex = /^(🚨\s*ALERT:?)/i;
     const verifiedRegex = /^(✅\s*VERIFIED:?)/i;
 
@@ -143,7 +156,11 @@ export default function VerificationDossier({
     return (
       <p
         key={idx}
-        className="font-serif text-[18px] leading-relaxed md:leading-loose text-slate-800 dark:text-slate-200"
+        className={`font-serif text-[18px] leading-relaxed md:leading-loose text-slate-800 dark:text-slate-200 ${
+          idx === 0
+            ? "first-letter:text-4xl first-letter:font-black first-letter:float-left first-letter:mr-2.5 first-letter:mt-1.5 first-letter:text-slate-900 dark:first-letter:text-white first-letter:leading-none"
+            : ""
+        }`}
       >
         {prefix}
         {parts.map((part, pIdx) => {
