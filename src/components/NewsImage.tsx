@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import Image from "next/image";
 import { motion, AnimatePresence } from "framer-motion";
 import { Camera } from "lucide-react";
 
@@ -79,36 +80,36 @@ export default function NewsImage({
   const initials = getInitials(sourceName);
   const fallbackLogoUrl = `https://logo.clearbit.com/${domain}`;
 
+  const isValidUrl = typeof imageUrl === "string" && 
+    (imageUrl.startsWith("http://") || imageUrl.startsWith("https://") || imageUrl.startsWith("/"));
+
   // ── Branch 1: Logo display (isLogo=true, image present, no error) ──
-  if (isLogo && imageUrl && !imageError) {
+  if (isLogo && imageUrl && isValidUrl && !imageError) {
     return (
       <div className="w-full h-full flex items-center justify-center p-8 bg-gray-50 dark:bg-slate-800 transition-colors duration-300 relative select-none">
-        <motion.img
-          src={imageUrl}
-          alt={`${sourceName} Logo`}
-          loading="lazy"
-          decoding="async"
-          className="max-h-24 max-w-[85%] object-contain filter dark:brightness-95"
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.2 }}
-          onError={() => setImageError(true)}
-        />
+        <div className="relative w-full h-24 max-w-[85%]">
+          <Image
+            src={imageUrl}
+            alt={`${sourceName} Logo`}
+            fill
+            sizes="(max-width: 768px) 100vw, 25vw"
+            className="object-contain filter dark:brightness-95"
+            onError={() => setImageError(true)}
+          />
+        </div>
       </div>
     );
   }
 
   // ── Branch 2: Error or no image — elegant gradient fallback with publisher identity ──
-  if (imageError || !imageUrl) {
+  if (imageError || !imageUrl || !isValidUrl) {
     return (
       <div className="absolute inset-0 bg-gradient-to-br from-gray-100 to-gray-200 dark:from-slate-800 dark:to-slate-900 flex flex-col items-center justify-center w-full h-full select-none gap-2 p-4 text-center">
-        <div className="w-12 h-12 rounded-full bg-white dark:bg-slate-700 shadow-md flex items-center justify-center border border-gray-200/50 dark:border-slate-600/50 overflow-hidden p-2.5">
+        <div className="w-12 h-12 rounded-full bg-white dark:bg-slate-700 shadow-md flex items-center justify-center border border-gray-200/50 dark:border-slate-600/50 overflow-hidden p-2.5 relative">
           {logoState === "clearbit" && (
             <img
               src={fallbackLogoUrl}
               alt={sourceName}
-              loading="lazy"
-              decoding="async"
               className="w-full h-full object-contain"
               onError={() => setLogoState("google")}
             />
@@ -117,8 +118,6 @@ export default function NewsImage({
             <img
               src={`https://www.google.com/s2/favicons?sz=128&domain=${domain}`}
               alt={sourceName}
-              loading="lazy"
-              decoding="async"
               className="w-full h-full object-contain"
               onError={() => setLogoState("initials")}
             />
@@ -151,16 +150,13 @@ export default function NewsImage({
         )}
       </AnimatePresence>
 
-      {/* The actual image */}
-      <motion.img
+      {/* The actual optimized image */}
+      <Image
         src={imageUrl}
         alt={title}
-        loading="lazy"
-        decoding="async"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: loaded ? 1 : 0 }}
-        transition={{ duration: 0.35 }}
-        className={className}
+        fill
+        sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+        className={`${className} transition-opacity duration-350 ${loaded ? "opacity-100" : "opacity-0"}`}
         onLoad={() => setLoaded(true)}
         onError={() => setImageError(true)}
       />

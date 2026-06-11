@@ -115,12 +115,34 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
   const [sortBy, setSortBy] = useState<"latest" | "verified" | "conflict">("latest");
   const [isPending, startTransition] = useTransition();
   const [refreshMessage, setRefreshMessage] = useState<string | null>(null);
+  const [displayLimit, setDisplayLimit] = useState(24);
+
   useEffect(() => {
     setMounted(true);
     const savedView = localStorage.getItem("truthfeed-viewmode");
     if (savedView === "grid" || savedView === "list") {
       setViewMode(savedView);
     }
+  }, []);
+
+  // Reset pagination limit when category, search query, or sorting changes
+  useEffect(() => {
+    setDisplayLimit(24);
+  }, [activeCategory, searchQuery, sortBy]);
+
+  // Infinite Scroll Scroll Event Listener
+  useEffect(() => {
+    const handleScroll = () => {
+      if (typeof window === "undefined") return;
+      if (
+        window.innerHeight + window.scrollY >=
+        document.documentElement.scrollHeight - 200
+      ) {
+        setDisplayLimit((prev) => prev + 24);
+      }
+    };
+    window.addEventListener("scroll", handleScroll);
+    return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
   // Client-side automatic background sync on page mount.
@@ -408,9 +430,11 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
   }, [showHeroSection, sortedAndFilteredArticles]);
 
   const feedArticles = useMemo(() => {
-    if (!showHeroSection) return sortedAndFilteredArticles;
-    return sortedAndFilteredArticles.slice(4);
-  }, [showHeroSection, sortedAndFilteredArticles]);
+    const baseList = showHeroSection
+      ? sortedAndFilteredArticles.slice(4)
+      : sortedAndFilteredArticles;
+    return baseList.slice(0, displayLimit);
+  }, [showHeroSection, sortedAndFilteredArticles, displayLimit]);
 
   return (
     <div className="flex flex-col min-h-screen bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 font-sans antialiased transition-colors duration-300">
@@ -771,11 +795,23 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
                   </div>
  
                   {feedArticles.length > 0 ? (
-                    <div className={viewMode === "grid" ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6" : "flex flex-col gap-4 max-w-5xl"}>
-                      {feedArticles.map((article) => (
-                        <TransparencyCard key={article.id} article={article} viewMode={viewMode} />
-                      ))}
-                    </div>
+                    <>
+                      <div className={viewMode === "grid" ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6" : "flex flex-col gap-4 max-w-5xl"}>
+                        {feedArticles.map((article) => (
+                          <TransparencyCard key={article.id} article={article} viewMode={viewMode} />
+                        ))}
+                      </div>
+
+                      {/* Pulse Loading indicator when there are more articles available to render */}
+                      {sortedAndFilteredArticles.length > feedArticles.length + (showHeroSection ? 4 : 0) && (
+                        <div className="flex justify-center py-10">
+                          <div className="flex items-center gap-2 text-xs font-mono text-slate-400 dark:text-slate-550 animate-pulse">
+                            <span className="h-1.5 w-1.5 rounded-full bg-slate-400 dark:bg-slate-500 animate-ping" />
+                            <span>Loading more updates...</span>
+                          </div>
+                        </div>
+                      )}
+                    </>
                   ) : (
                     <p className="text-xs text-slate-400 dark:text-slate-550 italic py-6">
                       No additional articles match your filter preferences.

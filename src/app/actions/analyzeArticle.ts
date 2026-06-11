@@ -252,12 +252,12 @@ Verification tracking remains active as independent outlets confirm the details.
      Use: "Out of 5 major outlets tracking the event, 4 agree on the baseline facts, though key details remain unverified."
    * Instead of: "We at TruthFeed are actively auditing these reports to resolve the discrepancies..."
      Use: "Verification tracking is active as outlets independent of local authorities confirm the casualty breakdown."
- - Start Quick Brief with '🚨 ALERT:' if conflicting, or '✅ VERIFIED:' if high consensus. Keep it to 2-3 sentences max. Naturally weave in the consensus (e.g., "Out of 5 major outlets tracking the event, 4 agree on the baseline facts, though key details remain unverified.").
+ - STRICT SUMMARY RULE: The 'quickBrief' must summarize the actual journalistic events, plot points, or news facts of the article content. Do not include meta-analysis about TruthFeed, data metrics, source counts, or consensus levels in this text (e.g., Do NOT write '5 outlets agree...' or 'High consensus shows...'). Start directly with 2-3 concise bullet points (using markdown '*') summarizing what happened in the story, incorporating links to the relevant source articles where appropriate.
  - For the Deep Dive, structure it as a clean, multi-paragraph news report starting with a location dateline in uppercase (e.g., 'LONDON — ', 'NEW YORK — '). Explain the facts clearly and highlight key discrepancies between source coverage without using robotic meta-commentary.
   
  OUTPUT JSON FORMAT:
  {
-   "quickBrief": "Start with 🚨 ALERT or ✅ VERIFIED. 2-3 sentences max. Explain the main conflict or confirmation. Include a humanized consensus sentence.",
+   "quickBrief": "Bulleted list starting directly with '*' summarizing the actual journalistic events of the story (2-3 bullet points max). Do not include any meta-analysis or source counts. Example format: * **Highlight Title:** Summary detail...\\n* **Another Highlight:** Other details...",
    "deepDive": "Structure exactly like this: [LOCATION] — [Clear summary of the event]...",
    "category": "World" | "Sports" | "Tech/Business" | "Entertainment",
    "verification": {
@@ -279,11 +279,12 @@ Verification tracking remains active as independent outlets confirm the details.
             role: "user",
             content: uniqueRelated.length === 0
               ? `Breaking Headline: "${articleTitle}"
+Description/Content: "${articleDesc}"
 This story currently has only ONE source (${article.sourceName}) and NO alternative coverage.
 Please write a briefing anchored entirely by this single source.
 
 In your JSON response:
-- For "quickBrief", output exactly: "Single-Source Curation: This report is anchored entirely by ${article.sourceName}. No conflicting reports have been flagged across our network."
+- For "quickBrief", output a 2-3 bullet point news summary of the actual journalistic events, plot points, or news facts of the article content, starting directly with bullet points '*'. Do not include meta-analysis or source counts.
 - For "deepDive", write a professional news wire report from the perspective of a single verified source. Do not mention multiple newsrooms or coverage consensus.
 - For "category", classify it.
 - For "verification", set:
@@ -293,8 +294,9 @@ In your JSON response:
   * "reasoning": "Single-source curation from a verified primary publisher."
 - For "perspectives", return an empty array [] since there are no alternative outlets reporting this.`
               : `Breaking Headline: "${articleTitle}"
+Description/Content: "${articleDesc}"
 Related coverage headlines:
-${uniqueRelated.map(s => `- ${s.title} (${s.sourceName})`).join("\n")}
+${uniqueRelated.map(s => `- ${s.title} (${s.sourceName})${s.url ? ` [Source URL: ${s.url}]` : ""}`).join("\n")}
 
 Wikipedia Entity Context:
 ${wikiContexts.length > 0 ? wikiContexts.map(w => `Entity: ${w.title}\nBackground: ${w.extract}`).join("\n\n") : "No historical entity background returned from Wikipedia."}`
@@ -368,13 +370,24 @@ ${wikiContexts.length > 0 ? wikiContexts.map(w => `Entity: ${w.title}\nBackgroun
         }
       }
 
-      // Dynamic Wording Template Adjustments for the Text Summary (quickBrief)
-      if (uniqueRelated.length === 0) {
-        quickBrief = `Single-Source Curation: This report is anchored entirely by ${article.sourceName}. No conflicting reports have been flagged across our network.`;
-      } else if (uniqueRelated.length + 1 >= 4 && confidenceLevel === "High") {
-        quickBrief = `High Consensus: ${uniqueRelated.length + 1} major independent newsrooms have cross-verified the baseline facts of this breaking event.`;
-      } else if (confidenceLevel === "Conflicting" || consensusScore < 3.5) {
-        quickBrief = `Divergent Coverage: Core details remain unverified as regional outlets conflict on the final breakdown.`;
+      // Post-processing safeguard: fallback to article description if the LLM outputted meta-analysis or is empty
+      const lowerBrief = quickBrief.toLowerCase();
+      const hasMetaText = lowerBrief.includes("independent newsrooms") ||
+                          lowerBrief.includes("cross-verified") ||
+                          lowerBrief.includes("outlets tracking") ||
+                          lowerBrief.includes("major independent") ||
+                          lowerBrief.includes("consensus");
+                          
+      if (!quickBrief || quickBrief.trim() === "" || hasMetaText) {
+        console.warn(`[Safeguard] Overriding meta-analysis or empty quickBrief with article description.`);
+        // Generate a clean 2-3 bullet point summary or fallback snippet
+        const cleanDesc = articleDesc.replace(/<[^>]*>/g, "").trim();
+        const sentences = cleanDesc.split(/(?<=\.)\s+/).filter(s => s.length > 5);
+        if (sentences.length > 0) {
+          quickBrief = sentences.slice(0, 2).map(s => `* ${s}.`).join("\n");
+        } else {
+          quickBrief = `* **Coverage Update:** ${articleTitle}.`;
+        }
       }
 
       const conflictReport = uniqueRelated.length === 0

@@ -3,9 +3,9 @@ import { prisma } from "@/lib/db";
 import HomepageClient from "@/components/HomepageClient";
 import { fetchNews } from "@/app/actions/fetchNews";
 
-// Ensure Next.js doesn't cache this page statically so new RSS imports appear
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
+// Enable Incremental Static Regeneration (ISR) - Cache the page for 60 seconds.
+// Cache is automatically purged on-demand via revalidatePath("/") in fetchNews.ts
+export const revalidate = 60;
 
 export default async function Home() {
   // Query articles and sources in parallel from PostgreSQL
