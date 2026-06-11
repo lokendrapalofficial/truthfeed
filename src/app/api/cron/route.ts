@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { prisma } from "@/lib/db";
 import { fetchNews } from "@/app/actions/fetchNews";
 
 export const dynamic = "force-dynamic";
@@ -31,6 +32,22 @@ export async function GET(request: Request) {
 
   if (result.success) {
     console.log(`Cron sync OK. Synced ${result.count} articles.`);
+    
+    // Pruning: delete articles older than 14 days to keep Supabase DB small (< 500MB free tier limit)
+    try {
+      const fourteenDaysAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
+      const pruneResult = await prisma.article.deleteMany({
+        where: {
+          publishedAt: {
+            lt: fourteenDaysAgo,
+          },
+        },
+      });
+      console.log(`[Database Pruning] Deleted ${pruneResult.count} articles older than 14 days.`);
+    } catch (pruneErr) {
+      console.error("[Database Pruning] Failed to prune old articles:", pruneErr);
+    }
+
     return NextResponse.json({
       success: true,
       message: `Synced ${result.count} articles successfully.`,
