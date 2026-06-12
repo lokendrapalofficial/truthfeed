@@ -7,13 +7,14 @@ export async function middleware(req: NextRequest) {
   const supabase = createMiddlewareClient({ req, res });
 
   // Refresh session if expired - required for Server Components
-  const { data: { session } } = await supabase.auth.getSession();
+  // Use getUser() instead of getSession() to securely revalidate the session
+  const { data: { user } } = await supabase.auth.getUser();
 
   // Protect specific routes (e.g. /dashboard or /onboarding)
   const url = req.nextUrl.clone();
   
   if (url.pathname.startsWith("/dashboard") || url.pathname.startsWith("/onboarding")) {
-    if (!session) {
+    if (!user) {
       url.pathname = "/";
       return NextResponse.redirect(url);
     }
