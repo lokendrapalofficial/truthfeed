@@ -94,7 +94,13 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
     };
   }, [supabase]);
 
-  const [userRegion, setUserRegion] = useState<string>("US");
+  const [userRegion, setUserRegion] = useState<string>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("truthfeed-country-preference");
+      if (saved) return saved;
+    }
+    return "US";
+  });
   const [userPrefs, setUserPrefs] = useState<string[]>([]);
   const [bookmarkIds, setBookmarkIds] = useState<string[]>([]);
   const [articles, setArticles] = useState<any[]>(initialArticles);
@@ -149,6 +155,9 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
             if (userReg === "UK") userReg = "GB";
             if (userReg === "EU") userReg = "DE";
             setUserRegion(userReg);
+            if (typeof window !== "undefined") {
+              localStorage.setItem("truthfeed-country-preference", userReg);
+            }
           }
         }
       });
@@ -159,16 +168,21 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
       });
     } else {
       setUserPrefs([]);
-      setUserRegion("US");
+      if (typeof window !== "undefined") {
+        const saved = localStorage.getItem("truthfeed-country-preference");
+        setUserRegion(saved || "US");
+      } else {
+        setUserRegion("US");
+      }
       setBookmarkIds([]);
     }
   }, [user]);
 
   useEffect(() => {
-    if (!user) {
+    if (!user && (userRegion === "US" || userRegion === "GLOBAL")) {
       setArticles(initialArticles);
     }
-  }, [initialArticles, user]);
+  }, [initialArticles, user, userRegion]);
 
   const loadArticlesForRegion = async (region: string) => {
     activeFetchRegion.current = region;
@@ -219,6 +233,9 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
 
   const handleQuickRegionChange = async (newRegion: string) => {
     setUserRegion(newRegion);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("truthfeed-country-preference", newRegion);
+    }
     if (user?.id) {
       const currentName = user?.user_metadata?.full_name || user?.user_metadata?.name || "";
       try {
