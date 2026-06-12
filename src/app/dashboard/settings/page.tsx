@@ -3,9 +3,9 @@
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Loader2, User, Mail, Globe, Award, FileText, LogOut, CheckCircle2 } from "lucide-react";
+import { ArrowLeft, Loader2, User, Mail, Globe, Award, FileText, LogOut, CheckCircle2, Trash2, AlertTriangle } from "lucide-react";
 import { createClientComponentClient } from "@/lib/supabase";
-import { getUserProfile, updateUserProfileSettings } from "@/app/actions/userActions";
+import { getUserProfile, updateUserProfileSettings, deleteUserAccount } from "@/app/actions/userActions";
 
 const REGIONS = [
   { id: "GLOBAL", label: "Global" },
@@ -30,6 +30,10 @@ export default function SettingsPage() {
   const [email, setEmail] = useState("");
   const [region, setRegion] = useState("GLOBAL");
   const [isPro, setIsPro] = useState(false);
+
+  // Deletion states
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   useEffect(() => {
     async function loadUserData() {
@@ -98,6 +102,30 @@ export default function SettingsPage() {
     await supabase.auth.signOut();
     router.push("/");
     router.refresh();
+  };
+
+  const handleDeleteAccount = async () => {
+    if (!userId) return;
+    
+    setIsDeleting(true);
+    setError(null);
+    
+    try {
+      const res = await deleteUserAccount(userId);
+      if (res.success) {
+        await supabase.auth.signOut();
+        router.push("/");
+        router.refresh();
+      } else {
+        setError(res.error || "Failed to delete account from database.");
+        setIsDeleting(false);
+        setShowDeleteConfirm(false);
+      }
+    } catch (err: any) {
+      setError(err.message || "An unexpected error occurred during account deletion.");
+      setIsDeleting(false);
+      setShowDeleteConfirm(false);
+    }
   };
 
   // Generate initials for avatar from name
@@ -298,15 +326,63 @@ export default function SettingsPage() {
                 <span>Terms & Conditions</span>
               </Link>
 
-              <div className="border-t border-slate-100 dark:border-slate-800 pt-4 mt-2">
+              <div className="border-t border-slate-100 dark:border-slate-800 pt-4 mt-2 space-y-3">
                 <button
                   type="button"
                   onClick={handleSignOut}
-                  className="flex items-center gap-2 text-xs font-bold text-rose-600 hover:text-rose-700 bg-rose-50 dark:bg-rose-950/20 border border-rose-100 dark:border-rose-900/35 px-4 py-2.5 rounded-xl cursor-pointer w-full justify-center transition-all active:scale-98"
+                  className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-350 hover:text-slate-900 dark:hover:text-slate-100 bg-slate-50 dark:bg-slate-950/20 border border-slate-200 dark:border-slate-850 px-4 py-2.5 rounded-xl cursor-pointer w-full justify-center transition-all active:scale-98 animate-in fade-in"
                 >
                   <LogOut className="h-4 w-4 shrink-0" />
                   <span>Sign Out of Account</span>
                 </button>
+
+                {!showDeleteConfirm ? (
+                  <button
+                    type="button"
+                    onClick={() => setShowDeleteConfirm(true)}
+                    className="flex items-center gap-2 text-xs font-bold text-rose-600 hover:text-rose-700 bg-rose-50 dark:bg-rose-950/10 border border-rose-100 dark:border-rose-900/35 px-4 py-2.5 rounded-xl cursor-pointer w-full justify-center transition-all active:scale-98 animate-in fade-in"
+                  >
+                    <Trash2 className="h-4 w-4 shrink-0" />
+                    <span>Delete Account</span>
+                  </button>
+                ) : (
+                  <div className="p-4 bg-rose-50 dark:bg-rose-950/25 border border-rose-150 dark:border-rose-900/50 rounded-xl space-y-3 animate-in slide-in-from-bottom-2 duration-200">
+                    <div className="flex items-start gap-2.5">
+                      <AlertTriangle className="h-5 w-5 text-rose-600 dark:text-rose-450 shrink-0 mt-0.5" />
+                      <div className="space-y-1 text-left">
+                        <h4 className="text-xs font-bold text-rose-800 dark:text-rose-300">Are you absolutely sure?</h4>
+                        <p className="text-[10px] text-rose-600 dark:text-rose-400 leading-relaxed">
+                          This will permanently delete your user profile, bookmarks, settings, and notes. This action is irreversible.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={handleDeleteAccount}
+                        disabled={isDeleting}
+                        className="flex-1 h-9 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold transition-all disabled:opacity-50 flex items-center justify-center gap-1.5 cursor-pointer"
+                      >
+                        {isDeleting ? (
+                          <>
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            <span>Deleting...</span>
+                          </>
+                        ) : (
+                          <span>Yes, Delete Account</span>
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowDeleteConfirm(false)}
+                        disabled={isDeleting}
+                        className="flex-1 h-9 bg-slate-105 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-white rounded-lg text-xs font-bold transition-all cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>

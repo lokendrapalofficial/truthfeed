@@ -19,6 +19,7 @@ model Article {
   isLogo         Boolean         @default(false)
   isThematic     Boolean         @default(false)
   sourceName     String
+  region         String          @default("GLOBAL")
   publishedAt    DateTime
   createdAt      DateTime        @default(now())
   factChecks     FactCheck[]

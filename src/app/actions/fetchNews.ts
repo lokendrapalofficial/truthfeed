@@ -422,8 +422,18 @@ async function fetchOgImage(pageUrl: string): Promise<string | null> {
   }
 }
 
-export async function fetchNews() {
+export async function fetchNews(region?: string) {
   try {
+    // Determine region parameters
+    let params = "hl=en-US&gl=US&ceid=US:en";
+    if (region === "IN") {
+      params = "hl=en-IN&gl=IN&ceid=IN:en";
+    } else if (region === "UK") {
+      params = "hl=en-GB&gl=GB&ceid=GB:en";
+    } else if (region === "EU") {
+      params = "hl=en-IE&gl=IE&ceid=IE:en";
+    }
+
     // 1. Fetch XML source map directly
     const sourceMap = await fetchSourceUrlsMap();
 
@@ -439,14 +449,14 @@ export async function fetchNews() {
 
     // Feeds list: main feed plus 7 news categories from Google News
     const FEED_URLS = [
-      "https://news.google.com/rss?hl=en-US&gl=US&ceid=US:en", // main
-      "https://news.google.com/news/rss/headlines/section/topic/WORLD?hl=en-US&gl=US&ceid=US:en",
-      "https://news.google.com/news/rss/headlines/section/topic/BUSINESS?hl=en-US&gl=US&ceid=US:en",
-      "https://news.google.com/news/rss/headlines/section/topic/TECHNOLOGY?hl=en-US&gl=US&ceid=US:en",
-      "https://news.google.com/news/rss/headlines/section/topic/SPORTS?hl=en-US&gl=US&ceid=US:en",
-      "https://news.google.com/news/rss/headlines/section/topic/ENTERTAINMENT?hl=en-US&gl=US&ceid=US:en",
-      "https://news.google.com/news/rss/headlines/section/topic/HEALTH?hl=en-US&gl=US&ceid=US:en",
-      "https://news.google.com/news/rss/headlines/section/topic/SCIENCE?hl=en-US&gl=US&ceid=US:en",
+      `https://news.google.com/rss?${params}`, // main
+      `https://news.google.com/news/rss/headlines/section/topic/WORLD?${params}`,
+      `https://news.google.com/news/rss/headlines/section/topic/BUSINESS?${params}`,
+      `https://news.google.com/news/rss/headlines/section/topic/TECHNOLOGY?${params}`,
+      `https://news.google.com/news/rss/headlines/section/topic/SPORTS?${params}`,
+      `https://news.google.com/news/rss/headlines/section/topic/ENTERTAINMENT?${params}`,
+      `https://news.google.com/news/rss/headlines/section/topic/HEALTH?${params}`,
+      `https://news.google.com/news/rss/headlines/section/topic/SCIENCE?${params}`,
     ];
 
     console.log("[RSS Sync] Fetching multiple category feeds in parallel...");
@@ -672,6 +682,7 @@ export async function fetchNews() {
               sourceId: existingSource ? existingSource.id : null,
               relatedSources: relatedSources as any,
               rssUrl,
+              region: region || "GLOBAL",
             },
             create: {
               title,
@@ -686,6 +697,7 @@ export async function fetchNews() {
               publishedAt,
               sourceId: existingSource ? existingSource.id : null,
               relatedSources: relatedSources as any,
+              region: region || "GLOBAL",
             },
           });
 
@@ -705,3 +717,32 @@ export async function fetchNews() {
     return { success: false, error: error.message || String(error) };
   }
 }
+
+export async function getArticles(region: string) {
+  try {
+    const articles = await prisma.article.findMany({
+      where: {
+        region: region,
+      },
+      orderBy: {
+        publishedAt: "desc",
+      },
+      take: 120,
+      include: {
+        factChecks: true,
+        source: true,
+        analysis: true,
+      },
+    });
+
+    if (articles.length === 0 && region !== "GLOBAL") {
+      return getArticles("GLOBAL");
+    }
+
+    return { success: true, articles };
+  } catch (error: any) {
+    console.error("Error fetching articles by region:", error);
+    return { success: false, error: error.message || String(error) };
+  }
+}
+

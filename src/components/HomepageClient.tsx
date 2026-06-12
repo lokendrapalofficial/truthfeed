@@ -2,14 +2,14 @@
 
 import React, { useState, useMemo, useTransition, useEffect, useRef } from "react";
 import Link from "next/link";
-import { Search, RefreshCw, Sun, Moon, LayoutGrid, List, Bookmark } from "lucide-react";
+import { Search, RefreshCw, Sun, Moon, LayoutGrid, List, Bookmark, Globe } from "lucide-react";
 import { createClientComponentClient } from "@/lib/supabase";
 import { useTheme } from "next-themes";
 import { useRouter } from "next/navigation";
 import AuthModal from "@/components/AuthModal";
 import UserMenu from "@/components/UserMenu";
-import { fetchNews } from "@/app/actions/fetchNews";
-import { getUserProfile } from "@/app/actions/userActions";
+import { fetchNews, getArticles } from "@/app/actions/fetchNews";
+import { getUserProfile, updateUserProfileSettings } from "@/app/actions/userActions";
 import { toggleBookmark, getUserBookmarkIds } from "@/app/actions/bookmarkActions";
 import { motion } from "framer-motion";
 import BackToTop from "@/components/BackToTop";
@@ -76,7 +76,7 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const supabase = createClientComponentClient();
   const router = useRouter();
-  const autoSyncAttempted = useRef(false);
+  const autoSyncAttempted = useRef<string | null>(null);
 
   useEffect(() => {
     async function getSession() {
@@ -94,14 +94,21 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
     };
   }, [supabase]);
 
+  const [userRegion, setUserRegion] = useState<string>("GLOBAL");
   const [userPrefs, setUserPrefs] = useState<string[]>([]);
   const [bookmarkIds, setBookmarkIds] = useState<string[]>([]);
+  const [articles, setArticles] = useState<any[]>(initialArticles);
 
   useEffect(() => {
     if (user?.id) {
       getUserProfile(user.id).then((res) => {
-        if (res.success && res.user?.preferences) {
-          setUserPrefs(res.user.preferences as string[]);
+        if (res.success && res.user) {
+          if (res.user.preferences) {
+            setUserPrefs(res.user.preferences as string[]);
+          }
+          if (res.user.region) {
+            setUserRegion(res.user.region as string);
+          }
         }
       });
       getUserBookmarkIds().then((res) => {
@@ -111,9 +118,63 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
       });
     } else {
       setUserPrefs([]);
+      setUserRegion("GLOBAL");
       setBookmarkIds([]);
     }
   }, [user]);
+
+  useEffect(() => {
+    if (!user) {
+      setArticles(initialArticles);
+    }
+  }, [initialArticles, user]);
+
+  const loadArticlesForRegion = async (region: string) => {
+    const res = await getArticles(region);
+    if (res.success && res.articles) {
+      const serialized = res.articles.map((art: any) => ({
+        ...art,
+        publishedAt: art.publishedAt instanceof Date ? art.publishedAt.toISOString() : String(art.publishedAt),
+        createdAt: art.createdAt instanceof Date ? art.createdAt.toISOString() : String(art.createdAt),
+        factChecks: art.factChecks || [],
+        source: art.source ? {
+          id: art.source.id,
+          name: art.source.name,
+          bias: art.source.bias,
+          credibility: art.source.credibility,
+          description: art.source.description,
+        } : null,
+        analysis: art.analysis ? {
+          id: art.analysis.id,
+          claim: art.analysis.claim,
+          briefing: art.analysis.briefing,
+          wikiContexts: art.analysis.wikiContexts,
+          category: art.analysis.category,
+          articleText: art.analysis.articleText,
+          verification: art.analysis.verification,
+        } : null,
+      }));
+      setArticles(serialized);
+    }
+  };
+
+  useEffect(() => {
+    if (userRegion) {
+      loadArticlesForRegion(userRegion);
+    }
+  }, [userRegion]);
+
+  const handleQuickRegionChange = async (newRegion: string) => {
+    setUserRegion(newRegion);
+    if (user?.id) {
+      const currentName = user?.user_metadata?.full_name || user?.user_metadata?.name || "";
+      try {
+        await updateUserProfileSettings(user.id, currentName, newRegion);
+      } catch (err) {
+        console.error("Failed to persist quick region change:", err);
+      }
+    }
+  };
 
   const handleBookmarkClick = async (e: React.MouseEvent, articleId: string) => {
     e.preventDefault();
@@ -193,32 +254,32 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
   // Client-side automatic background sync on page mount.
   // If the news is older than 15 minutes, fetch fresh articles in the background silently.
   useEffect(() => {
-    if (autoSyncAttempted.current) return;
-    autoSyncAttempted.current = true;
+    if (autoSyncAttempted.current === userRegion) return;
+    autoSyncAttempted.current = userRegion;
 
     const runBackgroundSync = async () => {
       // 1. If we have no articles at all, sync immediately (ignoring throttle)
       if (!initialArticles || initialArticles.length === 0) {
-        console.log("[Auto-Sync] No articles present. Triggering background refresh...");
+        console.log(`[Auto-Sync] No articles present for region ${userRegion}. Triggering background refresh...`);
         try {
-          const result = await fetchNews();
+          const result = await fetchNews(userRegion);
           if (result.success) {
-            localStorage.setItem("truthfeed-last-sync", Date.now().toString());
-            router.refresh();
+            localStorage.setItem(`truthfeed-last-sync-${userRegion}`, Date.now().toString());
+            await loadArticlesForRegion(userRegion);
           }
         } catch (err) {
-          console.error("[Auto-Sync] Silent sync error (no articles):", err);
+          console.error(`[Auto-Sync] Silent sync error for region ${userRegion} (no articles):`, err);
         }
         return;
       }
 
-      // 2. Check localStorage throttle (only run sync at most once every 15 minutes)
-      const lastSyncTimeStr = typeof window !== "undefined" ? localStorage.getItem("truthfeed-last-sync") : null;
+      // 2. Check localStorage throttle (only run sync at most once every 15 minutes per region)
+      const lastSyncTimeStr = typeof window !== "undefined" ? localStorage.getItem(`truthfeed-last-sync-${userRegion}`) : null;
       const lastSyncTime = lastSyncTimeStr ? parseInt(lastSyncTimeStr, 10) : 0;
       const fifteenMinutes = 15 * 60 * 1000;
 
       if (Date.now() - lastSyncTime < fifteenMinutes) {
-        console.log("[Auto-Sync] Skipped background sync: Throttled by localStorage (last sync was less than 15m ago).");
+        console.log(`[Auto-Sync] Skipped background sync for ${userRegion}: Throttled by localStorage (last sync was less than 15m ago).`);
         return;
       }
 
@@ -234,28 +295,28 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
 
       // 4. If the newest article is older than 15 minutes, trigger background sync
       if (latestIngestionTime < fifteenMinutesAgo) {
-        console.log("[Auto-Sync] News feed is older than 15 minutes. Syncing in background...");
+        console.log(`[Auto-Sync] News feed for ${userRegion} is older than 15 minutes. Syncing in background...`);
         // Set last sync timestamp immediately so concurrent mounts don't trigger duplicate syncs
-        localStorage.setItem("truthfeed-last-sync", Date.now().toString());
+        localStorage.setItem(`truthfeed-last-sync-${userRegion}`, Date.now().toString());
         try {
-          const result = await fetchNews();
+          const result = await fetchNews(userRegion);
           if (result.success && typeof result.count === "number" && result.count > 0) {
-            console.log(`[Auto-Sync] Background sync completed successfully: fetched ${result.count} new articles.`);
-            router.refresh();
+            console.log(`[Auto-Sync] Background sync completed successfully for ${userRegion}: fetched ${result.count} new articles.`);
+            await loadArticlesForRegion(userRegion);
           } else {
-            console.log("[Auto-Sync] Background sync checked, no new articles found.");
+            console.log(`[Auto-Sync] Background sync checked for ${userRegion}, no new articles found.`);
           }
         } catch (err) {
-          console.error("[Auto-Sync] Background sync error:", err);
+          console.error(`[Auto-Sync] Background sync error for ${userRegion}:`, err);
         }
       } else {
         // If feed is fresh, mark sync time so we don't re-check timestamps on every page load
-        localStorage.setItem("truthfeed-last-sync", Date.now().toString());
+        localStorage.setItem(`truthfeed-last-sync-${userRegion}`, Date.now().toString());
       }
     };
 
     runBackgroundSync();
-  }, [initialArticles, router]);
+  }, [initialArticles, router, userRegion]);
 
   const handleViewModeChange = (mode: "grid" | "list") => {
     setViewMode(mode);
@@ -264,10 +325,11 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
 
   const handleRefresh = () => {
     startTransition(async () => {
-      setRefreshMessage("Syncing feed...");
-      const result = await fetchNews();
+      setRefreshMessage(`Syncing ${userRegion === "GLOBAL" ? "global" : userRegion} news feed...`);
+      const result = await fetchNews(userRegion);
       if (result.success) {
         setRefreshMessage(`Synced ${result.count} articles`);
+        await loadArticlesForRegion(userRegion);
         setTimeout(() => setRefreshMessage(null), 3000);
       } else {
         setRefreshMessage(`Sync failed: ${result.error || result.message}`);
@@ -277,7 +339,7 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
   };
 
   const allArticles = useMemo(() => {
-    return initialArticles.map((art) => ({
+    return articles.map((art) => ({
       id: art.id,
       title: art.title,
       url: art.url,
@@ -292,7 +354,7 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
       source: art.source,
       analysis: art.analysis,
     }));
-  }, [initialArticles]);
+  }, [articles]);
 
   const mapPreferenceToCategory = (pref: string): string => {
     const p = pref.toLowerCase();
@@ -444,8 +506,31 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
       });
     }
 
-    // Bubble up user's preferred categories when on "For You" landing tab
-    if (activeCategory === "foryou" && preferredCategories.length > 0) {
+    // Bubble up user's preferred region and categories
+    if (userRegion && userRegion !== "GLOBAL") {
+      // Find articles matching user's region
+      const matchingRegion = result.filter(art => art.region === userRegion);
+      const otherRegion = result.filter(art => art.region !== userRegion);
+
+      // Helper to process category bubbling
+      const processCategoryBubbling = (list: any[]) => {
+        if (activeCategory === "foryou" && preferredCategories.length > 0) {
+          const matchingCat = list.filter(art => {
+            const cat = getArticleCategory(art.title, art.summary || art.content || "");
+            return preferredCategories.includes(cat);
+          });
+          const otherCat = list.filter(art => {
+            const cat = getArticleCategory(art.title, art.summary || art.content || "");
+            return !preferredCategories.includes(cat);
+          });
+          return [...matchingCat, ...otherCat];
+        }
+        return list;
+      };
+
+      return [...processCategoryBubbling(matchingRegion), ...processCategoryBubbling(otherRegion)];
+    } else if (activeCategory === "foryou" && preferredCategories.length > 0) {
+      // Standard category bubbling for GLOBAL
       const matching = result.filter(art => {
         const cat = getArticleCategory(art.title, art.summary || art.content || "");
         return preferredCategories.includes(cat);
@@ -458,7 +543,7 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
     }
 
     return result;
-  }, [deduplicatedArticles, sortBy, activeCategory, preferredCategories]);
+  }, [deduplicatedArticles, sortBy, activeCategory, preferredCategories, userRegion]);
 
   const showHeroSection = useMemo(() => {
     return activeCategory !== "top" && sortedAndFilteredArticles.length > 0;
@@ -591,30 +676,49 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
             })}
           </div>
 
-          {/* Grid/List View Mode Toggler */}
-          <div className="flex items-center gap-1 shrink-0 border-l border-slate-200 dark:border-slate-800 pl-3 py-1.5">
-            <button
-              onClick={() => handleViewModeChange("grid")}
-              className={`p-1.5 rounded transition-colors cursor-pointer ${
-                viewMode === "grid"
-                  ? "bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100"
-                  : "text-slate-400 dark:text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-850 hover:text-slate-650 dark:hover:text-slate-350"
-              }`}
-              title="Grid View"
-            >
-              <LayoutGrid className="h-4.5 w-4.5" />
-            </button>
-            <button
-              onClick={() => handleViewModeChange("list")}
-              className={`p-1.5 rounded transition-colors cursor-pointer ${
-                viewMode === "list"
-                  ? "bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100"
-                  : "text-slate-400 dark:text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-855 hover:text-slate-650 dark:hover:text-slate-350"
-              }`}
-              title="List View"
-            >
-              <List className="h-4.5 w-4.5" />
-            </button>
+          {/* Quick Region Selector & Grid/List Toggler */}
+          <div className="flex items-center gap-3 shrink-0 border-l border-slate-200 dark:border-slate-800 pl-3 py-1.5">
+            {/* Quick Region Selector */}
+            <div className="flex items-center gap-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 px-2.5 py-1 rounded-lg">
+              <Globe className="h-3.5 w-3.5 text-slate-400 dark:text-slate-500" />
+              <select
+                value={userRegion}
+                onChange={(e) => handleQuickRegionChange(e.target.value)}
+                className="bg-transparent border-none text-[10px] font-bold uppercase tracking-wider text-slate-605 dark:text-slate-400 focus:outline-none cursor-pointer outline-none"
+              >
+                <option value="GLOBAL">Global</option>
+                <option value="US">US Focus</option>
+                <option value="IN">India</option>
+                <option value="UK">UK Focus</option>
+                <option value="EU">EU Focus</option>
+              </select>
+            </div>
+
+            {/* Grid/List View Mode Toggler */}
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => handleViewModeChange("grid")}
+                className={`p-1.5 rounded transition-colors cursor-pointer ${
+                  viewMode === "grid"
+                    ? "bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+                    : "text-slate-400 dark:text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-855 hover:text-slate-650 dark:hover:text-slate-350"
+                }`}
+                title="Grid View"
+              >
+                <LayoutGrid className="h-4.5 w-4.5" />
+              </button>
+              <button
+                onClick={() => handleViewModeChange("list")}
+                className={`p-1.5 rounded transition-colors cursor-pointer ${
+                  viewMode === "list"
+                    ? "bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+                    : "text-slate-400 dark:text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-855 hover:text-slate-650 dark:hover:text-slate-350"
+                }`}
+                title="List View"
+              >
+                <List className="h-4.5 w-4.5" />
+              </button>
+            </div>
           </div>
         </div>
       </div>

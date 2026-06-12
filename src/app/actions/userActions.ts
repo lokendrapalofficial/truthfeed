@@ -46,3 +46,14 @@ export async function updateUserProfileSettings(userId: string, name: string, re
   }
 }
 
+export async function deleteUserAccount(userId: string) {
+  try {
+    await prisma.user.delete({
+      where: { id: userId },
+    });
+    return { success: true };
+  } catch (error: any) {
+    console.error("Error deleting user account:", error);
+    return { success: false, error: error.message || String(error) };
+  }
+}
