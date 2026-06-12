@@ -1,8 +1,8 @@
 "use client";
 
-import React, { useState, useMemo, useTransition, useEffect, useRef } from "react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 import Link from "next/link";
-import { Search, RefreshCw, Sun, Moon, LayoutGrid, List, Bookmark, Globe } from "lucide-react";
+import { Search, Sun, Moon, LayoutGrid, List, Bookmark, Globe } from "lucide-react";
 import { createClientComponentClient } from "@/lib/supabase";
 import { useTheme } from "next-themes";
 import { useRouter } from "next/navigation";
@@ -268,8 +268,6 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
   const [activeCategory, setActiveCategory] = useState("foryou");
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [sortBy, setSortBy] = useState<"latest" | "verified" | "conflict">("latest");
-  const [isPending, startTransition] = useTransition();
-  const [refreshMessage, setRefreshMessage] = useState<string | null>(null);
   const [displayLimit, setDisplayLimit] = useState(24);
 
   useEffect(() => {
@@ -331,22 +329,7 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
     localStorage.setItem("truthfeed-viewmode", mode);
   };
 
-  const handleRefresh = () => {
-    startTransition(async () => {
-      setRefreshMessage(`Syncing ${userRegion === "GLOBAL" ? "global" : userRegion} news feed...`);
-      const result = await fetchNews(userRegion);
-      if (result.success) {
-        setRefreshMessage(`Synced ${result.count} articles`);
-        localStorage.setItem(`truthfeed-last-sync-${userRegion}`, Date.now().toString());
-        updateLastSyncText();
-        await loadArticlesForRegion(userRegion);
-        setTimeout(() => setRefreshMessage(null), 3000);
-      } else {
-        setRefreshMessage(`Sync failed: ${result.error || result.message}`);
-        setTimeout(() => setRefreshMessage(null), 4000);
-      }
-    });
-  };
+
 
   const allArticles = useMemo(() => {
     return articles.map((art) => ({
@@ -649,21 +632,11 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
                 </Link>
               )}
 
-              <div className="flex items-center gap-1">
-                {mounted && lastSyncText && (
-                  <span className="text-[9px] font-mono text-slate-400 dark:text-slate-550 hidden sm:inline select-none pr-1" title="Last news feed synchronization">
-                    {lastSyncText}
-                  </span>
-                )}
-                <button
-                  onClick={handleRefresh}
-                  disabled={isPending}
-                  className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 disabled:text-slate-300 transition-colors cursor-pointer"
-                  title="Sync News Feed"
-                >
-                  <RefreshCw className={`h-4.5 w-4.5 ${isPending ? "animate-spin" : ""}`} />
-                </button>
-              </div>
+              {mounted && lastSyncText && (
+                <span className="text-[10px] font-mono text-slate-400 dark:text-slate-500 hidden sm:inline select-none px-1" title="Last news feed synchronization">
+                  Synced {lastSyncText}
+                </span>
+              )}
               
               <button
                 onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
@@ -748,12 +721,7 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
       <main className="flex-1 w-full">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
           
-          {/* Sync message banners */}
-          {refreshMessage && (
-            <div className="bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-xs px-4 py-2 rounded-lg text-center font-medium animate-pulse mb-6">
-              {refreshMessage}
-            </div>
-          )}
+
 
           {isRegionChanging ? (
             <div className="animate-pulse space-y-10">
