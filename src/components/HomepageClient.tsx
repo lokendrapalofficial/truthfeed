@@ -98,6 +98,8 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
   const [userPrefs, setUserPrefs] = useState<string[]>([]);
   const [bookmarkIds, setBookmarkIds] = useState<string[]>([]);
   const [articles, setArticles] = useState<any[]>(initialArticles);
+  const [isRegionChanging, setIsRegionChanging] = useState(false);
+  const activeFetchRegion = useRef<string | null>(null);
 
   useEffect(() => {
     if (user?.id) {
@@ -130,31 +132,43 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
   }, [initialArticles, user]);
 
   const loadArticlesForRegion = async (region: string) => {
-    const res = await getArticles(region);
-    if (res.success && res.articles) {
-      const serialized = res.articles.map((art: any) => ({
-        ...art,
-        publishedAt: art.publishedAt instanceof Date ? art.publishedAt.toISOString() : String(art.publishedAt),
-        createdAt: art.createdAt instanceof Date ? art.createdAt.toISOString() : String(art.createdAt),
-        factChecks: art.factChecks || [],
-        source: art.source ? {
-          id: art.source.id,
-          name: art.source.name,
-          bias: art.source.bias,
-          credibility: art.source.credibility,
-          description: art.source.description,
-        } : null,
-        analysis: art.analysis ? {
-          id: art.analysis.id,
-          claim: art.analysis.claim,
-          briefing: art.analysis.briefing,
-          wikiContexts: art.analysis.wikiContexts,
-          category: art.analysis.category,
-          articleText: art.analysis.articleText,
-          verification: art.analysis.verification,
-        } : null,
-      }));
-      setArticles(serialized);
+    activeFetchRegion.current = region;
+    setIsRegionChanging(true);
+    setArticles([]);
+    try {
+      const res = await getArticles(region);
+      if (activeFetchRegion.current !== region) return; // Ignore stale request
+      if (res.success && res.articles) {
+        const serialized = res.articles.map((art: any) => ({
+          ...art,
+          publishedAt: art.publishedAt instanceof Date ? art.publishedAt.toISOString() : String(art.publishedAt),
+          createdAt: art.createdAt instanceof Date ? art.createdAt.toISOString() : String(art.createdAt),
+          factChecks: art.factChecks || [],
+          source: art.source ? {
+            id: art.source.id,
+            name: art.source.name,
+            bias: art.source.bias,
+            credibility: art.source.credibility,
+            description: art.source.description,
+          } : null,
+          analysis: art.analysis ? {
+            id: art.analysis.id,
+            claim: art.analysis.claim,
+            briefing: art.analysis.briefing,
+            wikiContexts: art.analysis.wikiContexts,
+            category: art.analysis.category,
+            articleText: art.analysis.articleText,
+            verification: art.analysis.verification,
+          } : null,
+        }));
+        setArticles(serialized);
+      }
+    } catch (err) {
+      console.error("Failed to load region articles:", err);
+    } finally {
+      if (activeFetchRegion.current === region) {
+        setIsRegionChanging(false);
+      }
     }
   };
 
@@ -738,7 +752,60 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
             </div>
           )}
 
-          {filteredArticles.length > 0 ? (
+          {isRegionChanging ? (
+            <div className="animate-pulse space-y-10">
+              {/* Top Section Skeleton */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                {/* Large card skeleton */}
+                <div className="lg:col-span-2 flex flex-col bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden min-h-[380px]">
+                  <div className="aspect-[16/8] w-full bg-slate-200 dark:bg-slate-800" />
+                  <div className="p-5 flex flex-col flex-1 gap-4">
+                    <div className="flex gap-2">
+                      <div className="h-3 w-16 bg-slate-200 dark:bg-slate-800 rounded" />
+                      <div className="h-3 w-12 bg-slate-200 dark:bg-slate-800 rounded" />
+                    </div>
+                    <div className="space-y-2">
+                      <div className="h-5 w-full bg-slate-200 dark:bg-slate-800 rounded" />
+                      <div className="h-5 w-[85%] bg-slate-200 dark:bg-slate-800 rounded" />
+                    </div>
+                  </div>
+                </div>
+                {/* Secondary cards stack skeleton */}
+                <div className="flex flex-col gap-3">
+                  {[1, 2, 3].map((val) => (
+                    <div
+                      key={val}
+                      className="flex flex-col justify-between bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 min-h-[110px]"
+                    >
+                      <div className="h-3 w-16 bg-slate-200 dark:bg-slate-800 rounded" />
+                      <div className="h-4 w-full bg-slate-200 dark:bg-slate-800 rounded mt-2" />
+                      <div className="h-4 w-[75%] bg-slate-200 dark:bg-slate-800 rounded mt-1" />
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Grid Cards Skeleton */}
+              <div className="space-y-6">
+                <div className="h-6 w-32 bg-slate-200 dark:bg-slate-800 rounded" />
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                  {[1, 2, 3, 4, 5, 6, 7, 8].map((card) => (
+                    <div
+                      key={card}
+                      className="flex flex-col h-full rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden"
+                    >
+                      <div className="aspect-video w-full bg-slate-200 dark:bg-slate-800" />
+                      <div className="p-4 flex flex-col flex-1 gap-3">
+                        <div className="h-3 w-16 bg-slate-200 dark:bg-slate-800 rounded" />
+                        <div className="h-4 w-full bg-slate-200 dark:bg-slate-800 rounded" />
+                        <div className="h-4 w-[90%] bg-slate-200 dark:bg-slate-800 rounded" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ) : filteredArticles.length > 0 ? (
             <div className="grid grid-cols-1 gap-8">
               
               {/* Left 12 Columns - Content (Full width since sidebar is removed) */}
