@@ -723,16 +723,21 @@ export async function fetchNews(region?: string) {
 }
 
 export async function getArticles(region: string) {
-  // Map legacy/invalid regions to target country codes
-  let targetRegion = region;
-  if (targetRegion === "GLOBAL") targetRegion = "US";
-  if (targetRegion === "UK") targetRegion = "GB";
-  if (targetRegion === "EU") targetRegion = "DE";
+  let targetRegions = [region];
+  if (region === "US" || region === "GLOBAL") {
+    targetRegions = ["US", "GLOBAL"];
+  } else if (region === "GB" || region === "UK") {
+    targetRegions = ["GB", "UK"];
+  } else if (region === "DE" || region === "EU") {
+    targetRegions = ["DE", "EU"];
+  }
 
   try {
     const articles = await prisma.article.findMany({
       where: {
-        region: targetRegion,
+        region: {
+          in: targetRegions,
+        },
       },
       orderBy: {
         publishedAt: "desc",
@@ -745,7 +750,7 @@ export async function getArticles(region: string) {
       },
     });
 
-    if (articles.length === 0 && targetRegion !== "US") {
+    if (articles.length === 0 && !targetRegions.includes("US")) {
       return getArticles("US");
     }
 

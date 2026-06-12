@@ -504,10 +504,17 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
     }
 
     // Bubble up user's preferred region and categories
-    if (userRegion && userRegion !== "GLOBAL") {
+    if (userRegion) {
+      const isMatchingRegion = (artRegion: string) => {
+        if (userRegion === "US") return artRegion === "US" || artRegion === "GLOBAL";
+        if (userRegion === "GB") return artRegion === "GB" || artRegion === "UK";
+        if (userRegion === "DE") return artRegion === "DE" || artRegion === "EU";
+        return artRegion === userRegion;
+      };
+
       // Find articles matching user's region
-      const matchingRegion = result.filter(art => art.region === userRegion);
-      const otherRegion = result.filter(art => art.region !== userRegion);
+      const matchingRegion = result.filter(art => isMatchingRegion(art.region));
+      const otherRegion = result.filter(art => !isMatchingRegion(art.region));
 
       // Helper to process category bubbling
       const processCategoryBubbling = (list: any[]) => {
@@ -1063,7 +1070,7 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
             <div className="text-center py-16 px-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl max-w-md mx-auto transition-colors duration-300">
               <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">No articles available for this category</h3>
               <p className="text-slate-550 dark:text-slate-400 text-sm mt-1.5 leading-relaxed">
-                No matching feeds could be indexed for "{CATEGORIES.find(c => c.id === activeCategory)?.label}". Hit the Sync trigger in the top right to download new RSS streams.
+                No matching feeds could be indexed for "{CATEGORIES.find(c => c.id === activeCategory)?.label}". We are checking for fresh updates in the background.
               </p>
             </div>
           )}
