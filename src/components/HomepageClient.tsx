@@ -322,6 +322,8 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
   // Client-side automatic background sync on page mount.
   // If the news is older than 15 minutes, fetch fresh articles in the background silently.
   useEffect(() => {
+    if (!userRegion) return;
+    if (isRegionChanging) return; // Wait until initial region load is complete to avoid DB contention
     if (autoSyncAttempted.current === userRegion) return;
     autoSyncAttempted.current = userRegion;
 
@@ -343,7 +345,7 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
     };
 
     runBackgroundSync();
-  }, [initialArticles, router, userRegion]);
+  }, [initialArticles, router, userRegion, isRegionChanging]);
 
   const handleViewModeChange = (mode: "grid" | "list") => {
     setViewMode(mode);
@@ -390,26 +392,14 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
 
   const filteredArticles = useMemo(() => {
     return allArticles.filter((article) => {
-      // 1. Country Match (Strict filtering based on active userRegion)
-      const isMatchingRegion = (artRegion: string) => {
-        if (userRegion === "US") return artRegion === "US" || artRegion === "GLOBAL";
-        if (userRegion === "GB") return artRegion === "GB" || artRegion === "UK";
-        if (userRegion === "DE") return artRegion === "DE" || artRegion === "EU";
-        return artRegion === userRegion;
-      };
-      
-      if (!isMatchingRegion(article.region)) {
-        return false;
-      }
-
-      // 2. Search Query Match
+      // 1. Search Query Match
       const matchesSearch =
         article.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
         article.summary.toLowerCase().includes(searchQuery.toLowerCase()) ||
         article.sourceName.toLowerCase().includes(searchQuery.toLowerCase());
       if (!matchesSearch) return false;
 
-      // 3. Category Match
+      // 2. Category Match
       if (activeCategory !== "top" && activeCategory !== "foryou") {
         const cat = getArticleCategory(article.title, article.summary);
         if (cat !== activeCategory) return false;
@@ -417,7 +407,7 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
 
       return true;
     });
-  }, [allArticles, searchQuery, activeCategory, userRegion]);
+  }, [allArticles, searchQuery, activeCategory]);
 
   // Client-side title-similarity deduplication & outlet merging
   const deduplicatedArticles = useMemo(() => {
@@ -536,10 +526,11 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
     // Bubble up user's preferred region and categories
     if (userRegion) {
       const isMatchingRegion = (artRegion: string) => {
-        if (userRegion === "US") return artRegion === "US" || artRegion === "GLOBAL";
-        if (userRegion === "GB") return artRegion === "GB" || artRegion === "UK";
-        if (userRegion === "DE") return artRegion === "DE" || artRegion === "EU";
-        return artRegion === userRegion;
+        const regions = (artRegion || "").split(",");
+        if (userRegion === "US") return regions.includes("US") || regions.includes("GLOBAL");
+        if (userRegion === "GB") return regions.includes("GB") || regions.includes("UK");
+        if (userRegion === "DE") return regions.includes("DE") || regions.includes("EU");
+        return regions.includes(userRegion);
       };
 
       // Find articles matching user's region

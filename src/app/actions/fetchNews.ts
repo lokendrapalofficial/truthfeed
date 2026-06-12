@@ -467,8 +467,8 @@ export async function fetchNews(region?: string) {
     const feedPromises = FEED_URLS.map(async (url) => {
       try {
         const feed = await parser.parseURL(url);
-        // Only take the top 8 most recent items from each feed to prevent serverless timeouts
-        return (feed.items || []).slice(0, 8);
+        // Take the top 10 most recent items from each feed to enrich category feeds
+        return (feed.items || []).slice(0, 10);
       } catch (err) {
         console.error(`[RSS Sync] Failed to fetch feed ${url}:`, err);
         return [];
@@ -497,7 +497,7 @@ export async function fetchNews(region?: string) {
 
     // Pre-query all existing RSS URLs in batch to avoid 200+ single queries
     const rawFeedUrls = uniqueItems.map(item => item.link).filter(Boolean);
-    let existingRssUrlsSet = new Set<string>();
+    let existingArticlesMap = new Map<string, { id: string, rssUrl: string | null, region: string }>();
     try {
       const existingArticles = await prisma.article.findMany({
         where: {
@@ -506,11 +506,17 @@ export async function fetchNews(region?: string) {
           },
         },
         select: {
+          id: true,
           rssUrl: true,
+          region: true,
         },
       });
-      existingRssUrlsSet = new Set(existingArticles.map((a) => a.rssUrl).filter(Boolean) as string[]);
-      console.log(`[RSS Sync] Found ${existingRssUrlsSet.size} of the ${rawFeedUrls.length} feed articles already exist in database.`);
+      existingArticles.forEach((a) => {
+        if (a.rssUrl) {
+          existingArticlesMap.set(a.rssUrl, a);
+        }
+      });
+      console.log(`[RSS Sync] Found ${existingArticlesMap.size} of the ${rawFeedUrls.length} feed articles already exist in database.`);
     } catch (dbErr) {
       console.error("[RSS Sync] Failed to batch query existing RSS URLs, falling back to individual checks:", dbErr);
     }
@@ -530,8 +536,23 @@ export async function fetchNews(region?: string) {
           let url = tryDecodeGoogleNewsUrl(rawItem.link);
           const rssUrl = rawItem.link;
 
-          // 1. FAST CHECK: If raw Google News RSS URL is already ingested, skip entirely!
-          if (existingRssUrlsSet.has(rssUrl)) {
+          // 1. FAST CHECK: If raw Google News RSS URL is already ingested, update its region if needed, then return!
+          const existingArticle = existingArticlesMap.get(rssUrl);
+          if (existingArticle) {
+            const currentRegions = (existingArticle.region || "").split(",");
+            const targetRegion = region || "US";
+            if (!currentRegions.includes(targetRegion)) {
+              const updatedRegion = [...currentRegions, targetRegion].join(",");
+              try {
+                await prisma.article.update({
+                  where: { id: existingArticle.id },
+                  data: { region: updatedRegion },
+                });
+                upsertCount++;
+              } catch (updateErr) {
+                console.error(`[RSS Sync] Failed to append region ${targetRegion} to article ${existingArticle.id}:`, updateErr);
+              }
+            }
             return;
           }
 
@@ -591,24 +612,42 @@ export async function fetchNews(region?: string) {
           const sourceUrl = sourceMap.get(rawItem.link) || null;
           const sourceDomain = extractDomain(sourceUrl);
 
-          // STEP 1: Google redirect lookup (Real publisher URL)
-          const realArticleUrl = await resolveGoogleNewsRedirect(rawItem.link);
-          if (realArticleUrl) {
-            url = realArticleUrl;
-
-            // 2. RESOLVED CHECK: If resolved real URL is already ingested, skip fetching metadata/OG-image
-            try {
-              const existingResolved = await prisma.article.findUnique({
-                where: { url },
-                select: { id: true },
-              });
-              if (existingResolved) {
-                return;
-              }
-            } catch (dbErr) {
-              console.error("[RSS Sync] Database check error (resolved URL):", dbErr);
+          // If offline decoding failed (url is still the original google link), resolve redirect online
+          let realArticleUrl: string | null = null;
+          if (url === rawItem.link) {
+            const resolvedUrl = await resolveGoogleNewsRedirect(rawItem.link);
+            if (resolvedUrl) {
+              url = resolvedUrl;
+              realArticleUrl = resolvedUrl;
             }
+          } else {
+            realArticleUrl = url;
+          }
 
+          // 2. DATABASE CHECK BY URL (resolved or fallback): If already ingested, update its region if needed, then return!
+          try {
+            const existingResolved = await prisma.article.findUnique({
+              where: { url },
+              select: { id: true, region: true },
+            });
+            if (existingResolved) {
+              const currentRegions = (existingResolved.region || "").split(",");
+              const targetRegion = region || "US";
+              if (!currentRegions.includes(targetRegion)) {
+                const updatedRegion = [...currentRegions, targetRegion].join(",");
+                await prisma.article.update({
+                  where: { id: existingResolved.id },
+                  data: { region: updatedRegion },
+                });
+                upsertCount++;
+              }
+              return;
+            }
+          } catch (dbErr) {
+            console.error("[RSS Sync] Database check error (URL):", dbErr);
+          }
+
+          if (realArticleUrl) {
             const ogImage = await fetchOgImage(realArticleUrl);
             if (ogImage) {
               const sanitized = sanitizeAndUpgradeImageUrl(ogImage);
@@ -631,7 +670,8 @@ export async function fetchNews(region?: string) {
             }
           }
 
-          // STEP 2.5: Related article image fallback
+          // STEP 2.5: Related article image fallback (disabled to prevent network bottlenecks)
+          /*
           if (!imageUrl && relatedSources.length > 0) {
             for (const source of relatedSources.slice(0, 3)) {
               try {
@@ -652,6 +692,7 @@ export async function fetchNews(region?: string) {
               }
             }
           }
+          */
 
           // STEP 3: Publisher homepage backup
           if (!imageUrl && sourceDomain) {
@@ -735,9 +776,11 @@ export async function getArticles(region: string) {
   try {
     const articles = await prisma.article.findMany({
       where: {
-        region: {
-          in: targetRegions,
-        },
+        OR: targetRegions.map((r) => ({
+          region: {
+            contains: r,
+          },
+        })),
       },
       orderBy: {
         publishedAt: "desc",
