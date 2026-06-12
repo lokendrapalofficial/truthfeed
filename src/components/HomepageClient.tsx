@@ -100,6 +100,41 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
   const [articles, setArticles] = useState<any[]>(initialArticles);
   const [isRegionChanging, setIsRegionChanging] = useState(false);
   const activeFetchRegion = useRef<string | null>(null);
+  const [lastSyncText, setLastSyncText] = useState<string>("");
+
+  const updateLastSyncText = () => {
+    if (typeof window === "undefined") return;
+    const lastSyncTimeStr = localStorage.getItem(`truthfeed-last-sync-${userRegion}`);
+    if (!lastSyncTimeStr) {
+      setLastSyncText("");
+      return;
+    }
+    const timestamp = parseInt(lastSyncTimeStr, 10);
+    if (isNaN(timestamp) || timestamp === 0) {
+      setLastSyncText("");
+      return;
+    }
+    const diffMs = Date.now() - timestamp;
+    const diffMins = Math.floor(diffMs / 60000);
+    if (diffMins < 1) {
+      setLastSyncText("Just now");
+    } else if (diffMins < 60) {
+      setLastSyncText(`${diffMins}m ago`);
+    } else {
+      const diffHours = Math.floor(diffMins / 60);
+      if (diffHours < 24) {
+        setLastSyncText(`${diffHours}h ago`);
+      } else {
+        setLastSyncText(new Date(timestamp).toLocaleDateString([], { month: "short", day: "numeric" }));
+      }
+    }
+  };
+
+  useEffect(() => {
+    updateLastSyncText();
+    const interval = setInterval(updateLastSyncText, 60000);
+    return () => clearInterval(interval);
+  }, [userRegion]);
 
   useEffect(() => {
     if (user?.id) {
@@ -272,60 +307,19 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
     autoSyncAttempted.current = userRegion;
 
     const runBackgroundSync = async () => {
-      // 1. If we have no articles at all, sync immediately (ignoring throttle)
-      if (!initialArticles || initialArticles.length === 0) {
-        console.log(`[Auto-Sync] No articles present for region ${userRegion}. Triggering background refresh...`);
-        try {
-          const result = await fetchNews(userRegion);
-          if (result.success) {
-            localStorage.setItem(`truthfeed-last-sync-${userRegion}`, Date.now().toString());
-            await loadArticlesForRegion(userRegion);
-          }
-        } catch (err) {
-          console.error(`[Auto-Sync] Silent sync error for region ${userRegion} (no articles):`, err);
-        }
-        return;
-      }
-
-      // 2. Check localStorage throttle (only run sync at most once every 15 minutes per region)
-      const lastSyncTimeStr = typeof window !== "undefined" ? localStorage.getItem(`truthfeed-last-sync-${userRegion}`) : null;
-      const lastSyncTime = lastSyncTimeStr ? parseInt(lastSyncTimeStr, 10) : 0;
-      const fifteenMinutes = 15 * 60 * 1000;
-
-      if (Date.now() - lastSyncTime < fifteenMinutes) {
-        console.log(`[Auto-Sync] Skipped background sync for ${userRegion}: Throttled by localStorage (last sync was less than 15m ago).`);
-        return;
-      }
-
-      // 3. Find the most recently ingested article (using createdAt)
-      // If we don't have createdAt, fallback to publishedAt
-      const timestamps = initialArticles.map((art) => {
-        const dateStr = art.createdAt || art.publishedAt;
-        return dateStr ? new Date(dateStr).getTime() : 0;
-      }).filter(t => t > 0);
-
-      const latestIngestionTime = timestamps.length > 0 ? Math.max(...timestamps) : 0;
-      const fifteenMinutesAgo = Date.now() - fifteenMinutes;
-
-      // 4. If the newest article is older than 15 minutes, trigger background sync
-      if (latestIngestionTime < fifteenMinutesAgo) {
-        console.log(`[Auto-Sync] News feed for ${userRegion} is older than 15 minutes. Syncing in background...`);
-        // Set last sync timestamp immediately so concurrent mounts don't trigger duplicate syncs
+      console.log(`[Auto-Sync] Initiating automatic background news sync for ${userRegion}...`);
+      try {
+        const result = await fetchNews(userRegion);
         localStorage.setItem(`truthfeed-last-sync-${userRegion}`, Date.now().toString());
-        try {
-          const result = await fetchNews(userRegion);
-          if (result.success && typeof result.count === "number" && result.count > 0) {
-            console.log(`[Auto-Sync] Background sync completed successfully for ${userRegion}: fetched ${result.count} new articles.`);
-            await loadArticlesForRegion(userRegion);
-          } else {
-            console.log(`[Auto-Sync] Background sync checked for ${userRegion}, no new articles found.`);
-          }
-        } catch (err) {
-          console.error(`[Auto-Sync] Background sync error for ${userRegion}:`, err);
+        updateLastSyncText();
+        if (result.success && typeof result.count === "number" && result.count > 0) {
+          console.log(`[Auto-Sync] Background sync completed successfully: fetched ${result.count} new articles.`);
+          await loadArticlesForRegion(userRegion);
+        } else {
+          console.log(`[Auto-Sync] Background sync checked for ${userRegion}, no new articles found.`);
         }
-      } else {
-        // If feed is fresh, mark sync time so we don't re-check timestamps on every page load
-        localStorage.setItem(`truthfeed-last-sync-${userRegion}`, Date.now().toString());
+      } catch (err) {
+        console.error(`[Auto-Sync] Background sync error for ${userRegion}:`, err);
       }
     };
 
@@ -343,6 +337,8 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
       const result = await fetchNews(userRegion);
       if (result.success) {
         setRefreshMessage(`Synced ${result.count} articles`);
+        localStorage.setItem(`truthfeed-last-sync-${userRegion}`, Date.now().toString());
+        updateLastSyncText();
         await loadArticlesForRegion(userRegion);
         setTimeout(() => setRefreshMessage(null), 3000);
       } else {
@@ -653,14 +649,21 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
                 </Link>
               )}
 
-              <button
-                onClick={handleRefresh}
-                disabled={isPending}
-                className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 disabled:text-slate-300 transition-colors cursor-pointer"
-                title="Sync News Feed"
-              >
-                <RefreshCw className={`h-4.5 w-4.5 ${isPending ? "animate-spin" : ""}`} />
-              </button>
+              <div className="flex items-center gap-1">
+                {mounted && lastSyncText && (
+                  <span className="text-[9px] font-mono text-slate-400 dark:text-slate-550 hidden sm:inline select-none pr-1" title="Last news feed synchronization">
+                    {lastSyncText}
+                  </span>
+                )}
+                <button
+                  onClick={handleRefresh}
+                  disabled={isPending}
+                  className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 disabled:text-slate-300 transition-colors cursor-pointer"
+                  title="Sync News Feed"
+                >
+                  <RefreshCw className={`h-4.5 w-4.5 ${isPending ? "animate-spin" : ""}`} />
+                </button>
+              </div>
               
               <button
                 onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
