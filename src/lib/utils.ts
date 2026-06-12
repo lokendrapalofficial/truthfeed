@@ -73,11 +73,17 @@ export function formatSmartDate(dateInput: string | Date | number): SmartDateRes
 
 export function getArticleCategory(title: string, summary: string): string {
   const t = `${title} ${summary}`.toLowerCase();
-  if (t.match(/\b(apple|google|microsoft|ai|meta|nvidia|intel|openai|semiconductor|chip|cybersecurity|software|tech|technology|phone|quantum|robot|internet|app|mobile)\b/)) return "technology";
-  if (t.match(/\b(health|cancer|vaccine|virus|covid|fda|medical|disease|drug|outbreak|clinical|hospital|patient|treatment|doctor|nurse|surgery|mental|wellness|diet)\b/)) return "health";
-  if (t.match(/\b(space|mars|nasa|science|telescope|scientific|gene|dna|chemistry|physics|universe|planet|galaxy|scientist)\b/)) return "science";
-  if (t.match(/\b(market|finance|stock|stocks|wall st|economy|economic|business|ceo|company|billion|inflation|fed|rate|interest|bank|rupee|investment|profit|revenue)\b/)) return "business";
-  if (t.match(/\b(movie|film|actor|actress|bollywood|hollywood|music|singer|song|album|celebrity|oscar|grammy|netflix|cinema|show|theatre|concert|star|pop)\b/)) return "entertainment";
-  if (t.match(/\b(sports|football|basketball|soccer|baseball|tennis|olympics|nfl|nba|cup|game|stadium|athlete|championship|tournament|cricket|ipl|batsman|bowler|wicket|match)\b/)) return "sports";
+  // technology
+  if (t.match(/\b(apple|google|microsoft|ai|meta|nvidia|intel|openai|semiconductor|chip|cybersecurity|software|tech|technology|phone|quantum|robot|internet|app|mobile|computer|tastatur|bildschirm|hacker|daten)\b/)) return "technology";
+  // health
+  if (t.match(/\b(health|cancer|vaccine|virus|covid|fda|medical|disease|drug|outbreak|clinical|hospital|patient|treatment|doctor|nurse|surgery|mental|wellness|diet|gesundheit|medizin|krank|arzt|krankenhaus|impfung|krebs)\b/)) return "health";
+  // science
+  if (t.match(/\b(space|mars|nasa|science|telescope|scientific|gene|dna|chemistry|physics|universe|planet|galaxy|scientist|wissenschaft|weltraum|forschung|physik|chemie)\b/)) return "science";
+  // business
+  if (t.match(/\b(market|finance|stock|stocks|wall st|economy|economic|business|ceo|company|billion|inflation|fed|rate|interest|bank|rupee|investment|profit|revenue|markt|aktie|finanz|wirtschaft|unternehmen|geld|zins)\b/)) return "business";
+  // entertainment
+  if (t.match(/\b(movie|film|actor|actress|bollywood|hollywood|music|singer|song|album|celebrity|oscar|grammy|netflix|cinema|show|theatre|concert|star|pop|musik|sänger|schauspieler|kino|unterhaltung)\b/)) return "entertainment";
+  // sports
+  if (t.match(/\b(sports|sport|football|basketball|soccer|baseball|tennis|olympics|nfl|nba|cup|game|stadium|athlete|championship|tournament|cricket|ipl|batsman|bowler|wicket|match|fussball|wm|em|stadion|spieler|sieg|niederlage)\b/)) return "sports";
   return "world";
 }

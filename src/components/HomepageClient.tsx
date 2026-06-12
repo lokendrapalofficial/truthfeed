@@ -367,6 +367,7 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
       factChecks: art.factChecks || [],
       source: art.source,
       analysis: art.analysis,
+      region: art.region,
     }));
   }, [articles]);
 
@@ -389,14 +390,26 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
 
   const filteredArticles = useMemo(() => {
     return allArticles.filter((article) => {
-      // 1. Search Query Match
+      // 1. Country Match (Strict filtering based on active userRegion)
+      const isMatchingRegion = (artRegion: string) => {
+        if (userRegion === "US") return artRegion === "US" || artRegion === "GLOBAL";
+        if (userRegion === "GB") return artRegion === "GB" || artRegion === "UK";
+        if (userRegion === "DE") return artRegion === "DE" || artRegion === "EU";
+        return artRegion === userRegion;
+      };
+      
+      if (!isMatchingRegion(article.region)) {
+        return false;
+      }
+
+      // 2. Search Query Match
       const matchesSearch =
         article.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
         article.summary.toLowerCase().includes(searchQuery.toLowerCase()) ||
         article.sourceName.toLowerCase().includes(searchQuery.toLowerCase());
       if (!matchesSearch) return false;
 
-      // 2. Category Match
+      // 3. Category Match
       if (activeCategory !== "top" && activeCategory !== "foryou") {
         const cat = getArticleCategory(article.title, article.summary);
         if (cat !== activeCategory) return false;
@@ -404,7 +417,7 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
 
       return true;
     });
-  }, [allArticles, searchQuery, activeCategory]);
+  }, [allArticles, searchQuery, activeCategory, userRegion]);
 
   // Client-side title-similarity deduplication & outlet merging
   const deduplicatedArticles = useMemo(() => {
