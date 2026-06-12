@@ -424,14 +424,18 @@ async function fetchOgImage(pageUrl: string): Promise<string | null> {
 
 export async function fetchNews(region?: string) {
   try {
-    // Determine region parameters
+    // Determine country code parameters (defaults to US)
     let params = "hl=en-US&gl=US&ceid=US:en";
     if (region === "IN") {
       params = "hl=en-IN&gl=IN&ceid=IN:en";
-    } else if (region === "UK") {
+    } else if (region === "GB" || region === "UK") {
       params = "hl=en-GB&gl=GB&ceid=GB:en";
-    } else if (region === "EU") {
-      params = "hl=en-IE&gl=IE&ceid=IE:en";
+    } else if (region === "AU") {
+      params = "hl=en-AU&gl=AU&ceid=AU:en";
+    } else if (region === "CA") {
+      params = "hl=en-CA&gl=CA&ceid=CA:en";
+    } else if (region === "DE") {
+      params = "hl=de&gl=DE&ceid=DE:de";
     }
 
     // 1. Fetch XML source map directly
@@ -682,7 +686,7 @@ export async function fetchNews(region?: string) {
               sourceId: existingSource ? existingSource.id : null,
               relatedSources: relatedSources as any,
               rssUrl,
-              region: region || "GLOBAL",
+              region: region || "US",
             },
             create: {
               title,
@@ -697,7 +701,7 @@ export async function fetchNews(region?: string) {
               publishedAt,
               sourceId: existingSource ? existingSource.id : null,
               relatedSources: relatedSources as any,
-              region: region || "GLOBAL",
+              region: region || "US",
             },
           });
 
@@ -719,10 +723,16 @@ export async function fetchNews(region?: string) {
 }
 
 export async function getArticles(region: string) {
+  // Map legacy/invalid regions to target country codes
+  let targetRegion = region;
+  if (targetRegion === "GLOBAL") targetRegion = "US";
+  if (targetRegion === "UK") targetRegion = "GB";
+  if (targetRegion === "EU") targetRegion = "DE";
+
   try {
     const articles = await prisma.article.findMany({
       where: {
-        region: region,
+        region: targetRegion,
       },
       orderBy: {
         publishedAt: "desc",
@@ -735,13 +745,13 @@ export async function getArticles(region: string) {
       },
     });
 
-    if (articles.length === 0 && region !== "GLOBAL") {
-      return getArticles("GLOBAL");
+    if (articles.length === 0 && targetRegion !== "US") {
+      return getArticles("US");
     }
 
     return { success: true, articles };
   } catch (error: any) {
-    console.error("Error fetching articles by region:", error);
+    console.error("Error fetching articles by country:", error);
     return { success: false, error: error.message || String(error) };
   }
 }

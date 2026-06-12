@@ -7,12 +7,13 @@ import { ArrowLeft, Loader2, User, Mail, Globe, Award, FileText, LogOut, CheckCi
 import { createClientComponentClient } from "@/lib/supabase";
 import { getUserProfile, updateUserProfileSettings, deleteUserAccount } from "@/app/actions/userActions";
 
-const REGIONS = [
-  { id: "GLOBAL", label: "Global" },
+const COUNTRIES = [
+  { id: "IN", label: "India Edition" },
   { id: "US", label: "United States" },
-  { id: "IN", label: "India" },
-  { id: "UK", label: "United Kingdom" },
-  { id: "EU", label: "Europe" },
+  { id: "GB", label: "United Kingdom" },
+  { id: "AU", label: "Australia" },
+  { id: "CA", label: "Canada" },
+  { id: "DE", label: "Germany" },
 ];
 
 export default function SettingsPage() {
@@ -28,7 +29,7 @@ export default function SettingsPage() {
   const [userId, setUserId] = useState("");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
-  const [region, setRegion] = useState("GLOBAL");
+  const [region, setRegion] = useState("US");
   const [isPro, setIsPro] = useState(false);
 
   // Deletion states
@@ -52,7 +53,11 @@ export default function SettingsPage() {
         const res = await getUserProfile(sUser.id);
         if (res.success && res.user) {
           setName(res.user.name || sUser.user_metadata?.full_name || sUser.user_metadata?.name || "");
-          setRegion(res.user.region || "GLOBAL");
+          let userReg = res.user.region || "US";
+          if (userReg === "GLOBAL") userReg = "US";
+          if (userReg === "UK") userReg = "GB";
+          if (userReg === "EU") userReg = "DE";
+          setRegion(userReg);
           setIsPro(res.user.isPro || false);
         } else {
           setName(sUser.user_metadata?.full_name || sUser.user_metadata?.name || "");
@@ -258,7 +263,7 @@ export default function SettingsPage() {
 
             <div className="space-y-2">
               <label htmlFor="region" className="text-xs font-semibold text-slate-600 dark:text-slate-400">
-                Primary Region Focus
+                Primary Country Focus
               </label>
               <select
                 id="region"
@@ -266,14 +271,14 @@ export default function SettingsPage() {
                 onChange={(e) => setRegion(e.target.value)}
                 className="w-full h-10 px-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs outline-none focus:border-slate-350 dark:focus:border-slate-700 focus:bg-white dark:focus:bg-slate-900 transition-all text-slate-900 dark:text-slate-100 cursor-pointer"
               >
-                {REGIONS.map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.label}
+                {COUNTRIES.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.label}
                   </option>
                 ))}
               </select>
-              <p className="text-[10px] text-slate-500 dark:text-slate-550 leading-relaxed pl-1">
-                Prioritize news relevant to your selected region.
+              <p className="text-[10px] text-slate-500 dark:text-slate-555 leading-relaxed pl-1">
+                Prioritize news relevant to your selected country edition.
               </p>
             </div>
           </div>

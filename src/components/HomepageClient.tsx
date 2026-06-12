@@ -94,7 +94,7 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
     };
   }, [supabase]);
 
-  const [userRegion, setUserRegion] = useState<string>("GLOBAL");
+  const [userRegion, setUserRegion] = useState<string>("US");
   const [userPrefs, setUserPrefs] = useState<string[]>([]);
   const [bookmarkIds, setBookmarkIds] = useState<string[]>([]);
   const [articles, setArticles] = useState<any[]>(initialArticles);
@@ -143,8 +143,12 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
           if (res.user.preferences) {
             setUserPrefs(res.user.preferences as string[]);
           }
-          if (res.user.region) {
-            setUserRegion(res.user.region as string);
+           if (res.user.region) {
+            let userReg = res.user.region as string;
+            if (userReg === "GLOBAL") userReg = "US";
+            if (userReg === "UK") userReg = "GB";
+            if (userReg === "EU") userReg = "DE";
+            setUserRegion(userReg);
           }
         }
       });
@@ -155,7 +159,7 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
       });
     } else {
       setUserPrefs([]);
-      setUserRegion("GLOBAL");
+      setUserRegion("US");
       setBookmarkIds([]);
     }
   }, [user]);
@@ -607,11 +611,12 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
                   onChange={(e) => handleQuickRegionChange(e.target.value)}
                   className="appearance-none bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-705 dark:text-slate-200 text-xs font-bold pl-3 pr-8 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-none focus:border-slate-300 dark:focus:border-slate-650 transition-colors cursor-pointer select-none"
                 >
-                  <option value="GLOBAL">🌐 Global</option>
-                  <option value="US">🇺🇸 US Focus</option>
-                  <option value="IN">🇮🇳 India</option>
-                  <option value="UK">🇬🇧 UK Focus</option>
-                  <option value="EU">🇪🇺 EU Focus</option>
+                  <option value="IN">🇮🇳 India Edition</option>
+                  <option value="US">🇺🇸 United States</option>
+                  <option value="GB">🇬🇧 United Kingdom</option>
+                  <option value="AU">🇦🇺 Australia</option>
+                  <option value="CA">🇨🇦 Canada</option>
+                  <option value="DE">🇩🇪 Germany</option>
                 </select>
                 <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2.5 text-slate-500 dark:text-slate-400">
                   <svg className="fill-current h-3 w-3" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
