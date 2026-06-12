@@ -604,8 +604,31 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
               />
             </div>
 
-            {/* Right: Profile Actions / Sync Trigger */}
+            {/* Right: Profile Actions / Sync Trigger / Quick Region */}
             <div className="flex items-center gap-3">
+              
+              {/* Quick Region Selector (Globe icon + Custom Dropdown) */}
+              <div className="relative shrink-0">
+                <select
+                  value={userRegion}
+                  onChange={(e) => handleQuickRegionChange(e.target.value)}
+                  className="appearance-none bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-705 dark:text-slate-200 text-xs font-bold pl-3 pr-8 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-none focus:border-slate-300 dark:focus:border-slate-650 transition-colors cursor-pointer select-none"
+                >
+                  <option value="GLOBAL">🌐 Global</option>
+                  <option value="US">🇺🇸 US Focus</option>
+                  <option value="IN">🇮🇳 India</option>
+                  <option value="UK">🇬🇧 UK Focus</option>
+                  <option value="EU">🇪🇺 EU Focus</option>
+                </select>
+                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2.5 text-slate-500 dark:text-slate-400">
+                  <svg className="fill-current h-3 w-3" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
+                    <path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/>
+                  </svg>
+                </div>
+              </div>
+
+              <span className="h-4 w-[1px] bg-slate-200 dark:bg-slate-800 hidden sm:block shrink-0"></span>
+
               {user && (
                 <Link
                   href="/dashboard/bookmarks"
@@ -642,7 +665,7 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
               ) : (
                 <button
                   onClick={() => setIsAuthModalOpen(true)}
-                  className="flex items-center gap-1.5 px-3.5 h-9 rounded-full bg-slate-100 dark:bg-slate-850 hover:bg-slate-200 dark:hover:bg-slate-750 text-slate-705 dark:text-slate-300 font-bold text-[10px] uppercase tracking-wider cursor-pointer border border-slate-250 dark:border-slate-850 transition-colors shadow-sm"
+                  className="flex items-center gap-1.5 px-3.5 h-9 rounded-full bg-slate-105 dark:bg-slate-850 hover:bg-slate-200 dark:hover:bg-slate-750 text-slate-705 dark:text-slate-300 font-bold text-[10px] uppercase tracking-wider cursor-pointer border border-slate-250 dark:border-slate-850 transition-colors shadow-sm"
                   title="Sign In"
                 >
                   <span>Sign In</span>
@@ -676,49 +699,30 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
             })}
           </div>
 
-          {/* Quick Region Selector & Grid/List Toggler */}
-          <div className="flex items-center gap-3 shrink-0 border-l border-slate-200 dark:border-slate-800 pl-3 py-1.5">
-            {/* Quick Region Selector */}
-            <div className="flex items-center gap-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 px-2.5 py-1 rounded-lg">
-              <Globe className="h-3.5 w-3.5 text-slate-400 dark:text-slate-500" />
-              <select
-                value={userRegion}
-                onChange={(e) => handleQuickRegionChange(e.target.value)}
-                className="bg-transparent border-none text-[10px] font-bold uppercase tracking-wider text-slate-605 dark:text-slate-400 focus:outline-none cursor-pointer outline-none"
-              >
-                <option value="GLOBAL">Global</option>
-                <option value="US">US Focus</option>
-                <option value="IN">India</option>
-                <option value="UK">UK Focus</option>
-                <option value="EU">EU Focus</option>
-              </select>
-            </div>
-
-            {/* Grid/List View Mode Toggler */}
-            <div className="flex items-center gap-1">
-              <button
-                onClick={() => handleViewModeChange("grid")}
-                className={`p-1.5 rounded transition-colors cursor-pointer ${
-                  viewMode === "grid"
-                    ? "bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100"
-                    : "text-slate-400 dark:text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-855 hover:text-slate-650 dark:hover:text-slate-350"
-                }`}
-                title="Grid View"
-              >
-                <LayoutGrid className="h-4.5 w-4.5" />
-              </button>
-              <button
-                onClick={() => handleViewModeChange("list")}
-                className={`p-1.5 rounded transition-colors cursor-pointer ${
-                  viewMode === "list"
-                    ? "bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100"
-                    : "text-slate-400 dark:text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-855 hover:text-slate-650 dark:hover:text-slate-350"
-                }`}
-                title="List View"
-              >
-                <List className="h-4.5 w-4.5" />
-              </button>
-            </div>
+          {/* Grid/List View Mode Toggler */}
+          <div className="flex items-center gap-1 shrink-0 border-l border-slate-200 dark:border-slate-800 pl-3 py-1.5">
+            <button
+              onClick={() => handleViewModeChange("grid")}
+              className={`p-1.5 rounded transition-colors cursor-pointer ${
+                viewMode === "grid"
+                  ? "bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+                  : "text-slate-400 dark:text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-855 hover:text-slate-650 dark:hover:text-slate-350"
+              }`}
+              title="Grid View"
+            >
+              <LayoutGrid className="h-4.5 w-4.5" />
+            </button>
+            <button
+              onClick={() => handleViewModeChange("list")}
+              className={`p-1.5 rounded transition-colors cursor-pointer ${
+                viewMode === "list"
+                  ? "bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+                  : "text-slate-400 dark:text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-855 hover:text-slate-650 dark:hover:text-slate-350"
+              }`}
+              title="List View"
+            >
+              <List className="h-4.5 w-4.5" />
+            </button>
           </div>
         </div>
       </div>
