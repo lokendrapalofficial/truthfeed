@@ -37,7 +37,7 @@ export default function CommunityNotesSection({ articleId, notes }: CommunityNot
     }
     getSession();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event: any, session: any) => {
       setUser(session?.user ?? null);
     });
 
