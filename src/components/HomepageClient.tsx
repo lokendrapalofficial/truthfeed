@@ -291,16 +291,22 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [sortBy, setSortBy] = useState<"latest" | "verified" | "conflict">("latest");
   const [displayLimit, setDisplayLimit] = useState(24);
+  const [isMobile, setIsMobile] = useState(false);
+  const resolvedViewMode = isMobile ? "list" : viewMode;
 
   useEffect(() => {
     setMounted(true);
     const savedView = localStorage.getItem("truthfeed-viewmode");
     if (savedView === "grid" || savedView === "list") {
       setViewMode(savedView);
-    } else {
-      const isMobile = window.innerWidth < 768;
-      setViewMode(isMobile ? "list" : "grid");
     }
+    
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    handleResize();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
   }, []);
 
   // Reset pagination limit when category, search query, or sorting changes
@@ -779,7 +785,7 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
           </div>
 
           {/* Grid/List View Mode Toggler */}
-          <div className="flex items-center gap-1 shrink-0 border-l border-slate-200 dark:border-slate-800 pl-3 py-1.5">
+          <div className="hidden sm:flex items-center gap-1 shrink-0 border-l border-slate-200 dark:border-slate-800 pl-3 py-1.5">
             <button
               onClick={() => handleViewModeChange("grid")}
               className={`p-1.5 rounded transition-colors cursor-pointer ${
@@ -926,7 +932,7 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
                             <div className="max-w-xl">
                               <TransparencyCard 
                                 article={mainStory} 
-                                viewMode="grid" 
+                                viewMode={resolvedViewMode} 
                                 isBookmarked={bookmarkIds.includes(mainStory.id)}
                                 onToggleBookmark={(id, isSaved) => {
                                   if (isSaved) {
@@ -1104,12 +1110,12 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
  
                   {feedArticles.length > 0 ? (
                     <>
-                      <div className={viewMode === "grid" ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6" : "flex flex-col gap-4 max-w-5xl"}>
+                      <div className={resolvedViewMode === "grid" ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6" : "flex flex-col gap-4 max-w-5xl"}>
                         {feedArticles.map((article) => (
                           <TransparencyCard 
                             key={article.id} 
                             article={article} 
-                            viewMode={viewMode} 
+                            viewMode={resolvedViewMode} 
                             isBookmarked={bookmarkIds.includes(article.id)}
                             onToggleBookmark={(id, isSaved) => {
                               if (isSaved) {
