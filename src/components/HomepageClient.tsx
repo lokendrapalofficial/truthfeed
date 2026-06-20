@@ -297,6 +297,9 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
     const savedView = localStorage.getItem("truthfeed-viewmode");
     if (savedView === "grid" || savedView === "list") {
       setViewMode(savedView);
+    } else {
+      const isMobile = window.innerWidth < 768;
+      setViewMode(isMobile ? "list" : "grid");
     }
   }, []);
 
