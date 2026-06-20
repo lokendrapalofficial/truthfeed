@@ -230,7 +230,7 @@ export default function TransparencyCard({ article, viewMode = "grid", isBookmar
 
   if (viewMode === "list") {
     return (
-      <article className="group flex gap-4 items-start py-4 border-b border-slate-100 dark:border-slate-800 last:border-0">
+      <article className="group flex gap-4 items-start py-4 px-4 md:px-0 border-b border-slate-100 dark:border-slate-800 last:border-0">
         {/* Thumbnail */}
         <div className="w-20 h-20 shrink-0 overflow-hidden rounded-lg bg-slate-100 dark:bg-slate-800 relative">
           <NewsImage
@@ -322,9 +322,13 @@ export default function TransparencyCard({ article, viewMode = "grid", isBookmar
 
   // Grid mode (default)
   return (
-    <article className="group flex flex-col h-full rounded-xl border border-slate-200 dark:border-slate-800/80 bg-white dark:bg-slate-900 overflow-hidden hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md transition-all duration-300">
+    <article className="relative group flex flex-row md:flex-col justify-between items-start md:items-stretch h-full rounded-none md:rounded-xl border-0 border-b border-slate-150 dark:border-slate-800/80 md:border md:border-slate-205 md:dark:border-slate-800 bg-transparent md:bg-white md:dark:bg-slate-900 overflow-visible md:overflow-hidden hover:border-slate-350 dark:hover:border-slate-700 hover:shadow-none md:hover:shadow-md transition-all duration-300 py-4 md:py-0 px-4 md:px-0">
+      
+      {/* Invisible overlay link for whole card clickability */}
+      <Link href={`/article/${article.id}`} className="absolute inset-0 z-10" aria-label={article.title} />
+
       {/* Thumbnail */}
-      <div className="aspect-video w-full overflow-hidden bg-slate-100 dark:bg-slate-800 relative shrink-0">
+      <div className="w-20 h-20 md:w-full md:aspect-video overflow-hidden rounded-lg md:rounded-none bg-slate-100 dark:bg-slate-800 relative shrink-0 order-2 md:order-1 ml-4 md:ml-0 self-center md:self-auto shadow-sm md:shadow-none z-20">
         <NewsImage
           url={article.url}
           title={article.title}
@@ -336,48 +340,55 @@ export default function TransparencyCard({ article, viewMode = "grid", isBookmar
         />
         <button
           onClick={handleBookmarkClick}
-          className="absolute top-2.5 right-2.5 p-1.5 rounded-full bg-white/80 dark:bg-slate-900/80 hover:bg-white dark:hover:bg-slate-900 text-slate-650 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 shadow-sm border border-slate-200/50 dark:border-slate-800/50 transition-all z-10 cursor-pointer"
+          className="absolute top-1 right-1 md:top-2.5 md:right-2.5 p-1 md:p-1.5 rounded-full bg-white/80 dark:bg-slate-900/80 hover:bg-white dark:hover:bg-slate-900 text-slate-650 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 shadow-sm border border-slate-200/50 dark:border-slate-800/50 transition-all z-30 cursor-pointer scale-90 md:scale-100"
           title={bookmarked ? "Remove Bookmark" : "Bookmark Story"}
         >
-          <BookmarkIcon className={`h-4.5 w-4.5 ${bookmarked ? "fill-blue-600 dark:fill-blue-500 text-blue-600 dark:text-blue-500" : ""}`} />
+          <BookmarkIcon className={`h-3.5 w-3.5 md:h-4.5 md:w-4.5 ${bookmarked ? "fill-blue-600 dark:fill-blue-500 text-blue-600 dark:text-blue-500" : ""}`} />
         </button>
       </div>
 
       {/* Card Body */}
-      <div className="flex flex-col flex-1 p-4 gap-3">
-        {/* Meta Row */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-[10px] font-mono font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+      <div className="flex flex-col flex-1 p-0 md:p-4 gap-2.5 md:gap-3 order-1 md:order-2 min-w-0 w-full relative z-20">
+        {/* Meta Row (Ground News Swipeable Tray) */}
+        <div className="flex items-center gap-2 overflow-x-auto whitespace-nowrap scrollbar-hide pb-0.5 max-w-full">
+          <span className="text-[10px] font-mono font-bold text-slate-500 dark:text-slate-450 uppercase tracking-wider bg-slate-100 dark:bg-slate-800/60 px-2 py-0.5 rounded shrink-0">
             {article.sourceName}
           </span>
-          <span className="text-slate-300 dark:text-slate-600">·</span>
-          <div className="flex items-center gap-1 text-[10px] font-mono text-slate-400 dark:text-slate-500">
+          <span className="text-slate-300 dark:text-slate-600 shrink-0">·</span>
+          <div className="flex items-center gap-1 text-[10px] font-mono text-slate-405 dark:text-slate-500 shrink-0">
             {smartDate.showRedDot && (
               <span className="animate-pulse bg-red-500 rounded-full h-1.5 w-1.5 inline-block shrink-0" />
             )}
             <span>{smartDate.text}</span>
           </div>
-          <span className="text-slate-300 dark:text-slate-600">·</span>
-          <span className="text-[10px] font-mono text-slate-400 dark:text-slate-500">
-            {estimatedOutlets} Outlets Tracking
+          <span className="text-slate-300 dark:text-slate-600 shrink-0">·</span>
+          <span className="text-[10px] font-mono text-blue-600 dark:text-blue-450 bg-blue-50/50 dark:bg-blue-950/20 px-2 py-0.5 rounded shrink-0 font-bold">
+            📊 {estimatedOutlets} Outlets
           </span>
+          {category && (
+            <>
+              <span className="text-slate-300 dark:text-slate-600 shrink-0">·</span>
+              <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-500 dark:text-slate-450 bg-slate-100 dark:bg-slate-800/60 px-2 py-0.5 rounded shrink-0">
+                {category}
+              </span>
+            </>
+          )}
           <TrustIndicator level={confidenceLevel} />
         </div>
 
         {/* Headline */}
-        <Link href={`/article/${article.id}`} className="flex-1">
-          <h3 className="font-serif font-bold text-base text-slate-900 dark:text-slate-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors leading-snug line-clamp-3">
+        <div className="flex-1 min-w-0">
+          <h3 className="font-serif font-bold text-sm md:text-base text-slate-900 dark:text-slate-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors leading-snug line-clamp-3">
             {article.title}
           </h3>
-        </Link>
-
+        </div>
 
         {/* Divider */}
-        <div className="border-t border-slate-100 dark:border-slate-800 pt-2 mt-auto">
+        <div className="border-t border-slate-100 dark:border-slate-800/60 pt-2 mt-auto">
           {/* Explain Simply Button */}
           <button
             onClick={handleExplainSimply}
-            className="w-full flex items-center justify-between gap-1.5 text-[10px] font-bold font-mono uppercase tracking-wider text-indigo-600 dark:text-indigo-400 hover:text-indigo-855 dark:hover:text-indigo-300 hover:bg-indigo-50/50 dark:hover:bg-indigo-950/20 px-2 py-1.5 rounded-lg transition-all cursor-pointer group/btn"
+            className="w-full flex items-center justify-between gap-1.5 text-[10px] font-bold font-mono uppercase tracking-wider text-indigo-650 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 hover:bg-indigo-50/50 dark:hover:bg-indigo-950/20 px-2 py-1 rounded-lg transition-all cursor-pointer group/btn"
           >
             <span className="font-bold">🧠 Explain Simply</span>
             {isExplainOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}

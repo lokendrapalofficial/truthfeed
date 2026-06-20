@@ -107,6 +107,7 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
   const [isRegionChanging, setIsRegionChanging] = useState(false);
   const activeFetchRegion = useRef<string | null>(null);
   const [lastSyncText, setLastSyncText] = useState<string>("");
+  const [showMobileSearch, setShowMobileSearch] = useState(false);
 
   const updateLastSyncText = () => {
     if (typeof window === "undefined") return;
@@ -600,23 +601,25 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
           <div className="flex h-16 items-center justify-between gap-4">
             
             {/* Left: TruthFeed Logo */}
-            <div
-              className="cursor-pointer flex items-center gap-1.5 select-none"
-              onClick={() => {
-                setActiveCategory("foryou");
-                setSearchQuery("");
-              }}
-            >
-              <div className="flex h-7 w-7 items-center justify-center rounded bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 font-bold text-sm tracking-tight transition-colors duration-300">
-                T
+            {!showMobileSearch && (
+              <div
+                className="cursor-pointer flex items-center gap-1.5 select-none shrink-0"
+                onClick={() => {
+                  setActiveCategory("foryou");
+                  setSearchQuery("");
+                }}
+              >
+                <div className="flex h-7 w-7 items-center justify-center rounded bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 font-bold text-sm tracking-tight transition-colors duration-300">
+                  T
+                </div>
+                <span className="text-xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
+                  TruthFeed
+                </span>
               </div>
-              <span className="text-xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
-                TruthFeed
-              </span>
-            </div>
+            )}
 
-            {/* Center: Rounded Search Bar */}
-            <div className="flex-1 max-w-xl relative group mx-2">
+            {/* Center: Rounded Search Bar (Responsive toggling) */}
+            <div className={`flex-1 max-w-xl relative group mx-2 ${showMobileSearch ? "block" : "hidden sm:block"}`}>
               <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none text-slate-400 group-focus-within:text-slate-700 dark:group-focus-within:text-slate-350 transition-colors">
                 <Search className="h-4 w-4" />
               </div>
@@ -625,78 +628,128 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
                 placeholder="Search for topics, sources and claims"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full h-10 pl-10 pr-4 rounded-full bg-slate-100 dark:bg-slate-800 text-sm text-slate-900 dark:text-slate-100 placeholder-slate-500 dark:placeholder-slate-400 border border-transparent dark:border-slate-750 focus:border-slate-200 dark:focus:border-slate-650 focus:bg-white dark:focus:bg-slate-900 outline-none transition-all duration-300"
+                className="w-full h-10 pl-10 pr-10 rounded-full bg-slate-105 dark:bg-slate-800 text-sm text-slate-900 dark:text-slate-100 placeholder-slate-500 dark:placeholder-slate-400 border border-transparent dark:border-slate-750 focus:border-slate-200 dark:focus:border-slate-650 focus:bg-white dark:focus:bg-slate-900 outline-none transition-all duration-300"
               />
-            </div>
-
-            {/* Right: Profile Actions / Sync Trigger / Quick Region */}
-            <div className="flex items-center gap-3">
-              
-              {/* Quick Region Selector (Globe icon + Custom Dropdown) */}
-              <div className="relative shrink-0">
-                <select
-                  value={userRegion}
-                  onChange={(e) => handleQuickRegionChange(e.target.value)}
-                  className="appearance-none bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-705 dark:text-slate-200 text-xs font-bold pl-3 pr-8 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-none focus:border-slate-300 dark:focus:border-slate-650 transition-colors cursor-pointer select-none"
-                >
-                  <option value="IN">🇮🇳 India Edition</option>
-                  <option value="US">🇺🇸 United States</option>
-                  <option value="GB">🇬🇧 United Kingdom</option>
-                  <option value="AU">🇦🇺 Australia</option>
-                  <option value="CA">🇨🇦 Canada</option>
-                  <option value="DE">🇩🇪 Germany</option>
-                </select>
-                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2.5 text-slate-500 dark:text-slate-400">
-                  <svg className="fill-current h-3 w-3" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
-                    <path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/>
-                  </svg>
-                </div>
-              </div>
-
-              <span className="h-4 w-[1px] bg-slate-200 dark:bg-slate-800 hidden sm:block shrink-0"></span>
-
-              {user && (
-                <Link
-                  href="/dashboard/bookmarks"
-                  className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 transition-colors cursor-pointer"
-                  title="My Bookmarks"
-                >
-                  <Bookmark className="h-4.5 w-4.5" />
-                </Link>
-              )}
-
-              {mounted && lastSyncText && (
-                <span className="text-[10px] font-mono text-slate-400 dark:text-slate-500 hidden sm:inline select-none px-1" title="Last news feed synchronization">
-                  Synced {lastSyncText}
-                </span>
-              )}
-              
-              <button
-                onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
-                className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 transition-colors cursor-pointer"
-                title="Toggle theme"
-              >
-                {mounted && resolvedTheme === "dark" ? (
-                  <Sun className="h-4.5 w-4.5" />
-                ) : (
-                  <Moon className="h-4.5 w-4.5" />
-                )}
-              </button>
-
-              {user ? (
-                <UserMenu user={user} onSignOut={() => { setUser(null); router.refresh(); }} />
-              ) : (
+              {showMobileSearch && (
                 <button
-                  onClick={() => setIsAuthModalOpen(true)}
-                  className="flex items-center gap-1.5 px-3.5 h-9 rounded-full bg-slate-105 dark:bg-slate-850 hover:bg-slate-200 dark:hover:bg-slate-750 text-slate-705 dark:text-slate-300 font-bold text-[10px] uppercase tracking-wider cursor-pointer border border-slate-250 dark:border-slate-850 transition-colors shadow-sm"
-                  title="Sign In"
+                  onClick={() => {
+                    setShowMobileSearch(false);
+                    setSearchQuery("");
+                  }}
+                  className="absolute inset-y-0 right-4 flex items-center text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 cursor-pointer"
                 >
-                  <span>Sign In</span>
+                  ✕
                 </button>
               )}
             </div>
 
+            {/* Right: Actions Tray */}
+            {!showMobileSearch && (
+              <div className="flex items-center gap-3 shrink-0">
+                
+                {/* Search Trigger for Mobile */}
+                <button
+                  onClick={() => setShowMobileSearch(true)}
+                  className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 sm:hidden transition-colors cursor-pointer"
+                  title="Search"
+                >
+                  <Search className="h-4.5 w-4.5" />
+                </button>
+
+                {/* Quick Region Selector (Hidden on mobile) */}
+                <div className="relative shrink-0 hidden md:block">
+                  <select
+                    value={userRegion}
+                    onChange={(e) => handleQuickRegionChange(e.target.value)}
+                    className="appearance-none bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-705 dark:text-slate-200 text-xs font-bold pl-3 pr-8 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-none focus:border-slate-300 dark:focus:border-slate-655 transition-colors cursor-pointer select-none"
+                  >
+                    <option value="IN">🇮🇳 India Edition</option>
+                    <option value="US">🇺🇸 United States</option>
+                    <option value="GB">🇬🇧 United Kingdom</option>
+                    <option value="AU">🇦🇺 Australia</option>
+                    <option value="CA">🇨🇦 Canada</option>
+                    <option value="DE">🇩🇪 Germany</option>
+                  </select>
+                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2.5 text-slate-500 dark:text-slate-400">
+                    <svg className="fill-current h-3 w-3" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
+                      <path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/>
+                    </svg>
+                  </div>
+                </div>
+
+                <span className="h-4 w-[1px] bg-slate-200 dark:bg-slate-800 hidden sm:block shrink-0"></span>
+
+                {user && (
+                  <Link
+                    href="/dashboard/bookmarks"
+                    className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 transition-colors cursor-pointer"
+                    title="My Bookmarks"
+                  >
+                    <Bookmark className="h-4.5 w-4.5" />
+                  </Link>
+                )}
+
+                {mounted && lastSyncText && (
+                  <span className="text-[10px] font-mono text-slate-400 dark:text-slate-500 hidden sm:inline select-none px-1" title="Last news feed synchronization">
+                    Synced {lastSyncText}
+                  </span>
+                )}
+                
+                <button
+                  onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
+                  className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 transition-colors cursor-pointer"
+                  title="Toggle theme"
+                >
+                  {mounted && resolvedTheme === "dark" ? (
+                    <Sun className="h-4.5 w-4.5" />
+                  ) : (
+                    <Moon className="h-4.5 w-4.5" />
+                  )}
+                </button>
+
+                {user ? (
+                  <UserMenu user={user} onSignOut={() => { setUser(null); router.refresh(); }} />
+                ) : (
+                  <button
+                    onClick={() => setIsAuthModalOpen(true)}
+                    className="flex items-center gap-1.5 px-3.5 h-9 rounded-full bg-slate-105 dark:bg-slate-855 hover:bg-slate-200 dark:hover:bg-slate-750 text-slate-705 dark:text-slate-300 font-bold text-[10px] uppercase tracking-wider cursor-pointer border border-slate-250 dark:border-slate-850 transition-colors shadow-sm"
+                    title="Sign In"
+                  >
+                    <span>Sign In</span>
+                  </button>
+                )}
+              </div>
+            )}
+
           </div>
+        </div>
+
+        {/* SUB-HEADER: Region Selection Tray for Mobile Viewports */}
+        <div className="flex md:hidden items-center justify-start gap-2.5 px-4 py-2 overflow-x-auto bg-slate-50/50 dark:bg-slate-800/30 border-t border-slate-200/60 dark:border-slate-800/60 scrollbar-hide">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 whitespace-nowrap select-none">Region:</span>
+          {[
+            { id: "IN", flag: "🇮🇳", label: "India" },
+            { id: "US", flag: "🇺🇸", label: "US" },
+            { id: "GB", flag: "🇬🇧", label: "UK" },
+            { id: "AU", flag: "🇦🇺", label: "AU" },
+            { id: "CA", flag: "🇨🇦", label: "CA" },
+            { id: "DE", flag: "🇩🇪", label: "DE" },
+          ].map((reg) => {
+            const isActive = userRegion === reg.id;
+            return (
+              <button
+                key={reg.id}
+                onClick={() => handleQuickRegionChange(reg.id)}
+                className={`text-[11px] font-bold px-2 py-0.5 rounded whitespace-nowrap transition-colors cursor-pointer ${
+                  isActive
+                    ? "text-indigo-650 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40"
+                    : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
+                }`}
+              >
+                {reg.flag} {reg.label}
+              </button>
+            );
+          })}
         </div>
       </header>
 
@@ -752,7 +805,7 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
 
       {/* Main Core Content Feed */}
       <main className="flex-1 w-full">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
+        <div className="max-w-7xl mx-auto px-0 sm:px-6 py-6">
           
 
 
@@ -848,7 +901,7 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
                       return (
                         <div key={cat.id} className="space-y-4">
                           {/* Section Header */}
-                          <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
+                          <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3 px-4 sm:px-0">
                             <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider flex items-center gap-2">
                               <span className="h-2 w-2 rounded-full bg-indigo-600 dark:bg-indigo-400 animate-pulse"></span>
                               Trending News in {cat.label}
@@ -1001,7 +1054,7 @@ export default function HomepageClient({ initialArticles }: HomepageClientProps)
  
                 {/* High Density Main Feed (Below the fold) */}
                 <section className="space-y-6">
-                  <div className="border-b border-slate-200 dark:border-slate-800 pb-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="border-b border-slate-200 dark:border-slate-800 pb-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 sm:px-0">
                     <h2 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100 flex items-center gap-2">
                       <span>Latest Updates</span>
                       {activeCategory === "foryou" && preferredCategories.length > 0 && (

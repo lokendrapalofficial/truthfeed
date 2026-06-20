@@ -75,7 +75,7 @@ export default function TopStories({
   };
 
   return (
-    <div className="pb-8 border-b border-slate-200 dark:border-slate-800/80 animate-fadeIn">
+    <div className="pb-8 border-b border-slate-200 dark:border-slate-800/80 animate-fadeIn px-4 lg:px-0">
       {/* Section Header */}
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-xl font-bold tracking-tight text-slate-900 dark:text-slate-100 flex items-center gap-2.5">
