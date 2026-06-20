@@ -706,11 +706,10 @@ export async function fetchNews(region?: string) {
             }
           }
 
-          // STEP 4: Standard thematic placeholder
+          // STEP 4: Fallback to logo
           if (!imageUrl) {
-            imageUrl = getDeterministicImage(title);
-            isThematic = true;
-            imageSource = "unsplash-thematic";
+            isLogo = true;
+            imageSource = "logo-fallback";
           }
 
           await prisma.article.upsert({
