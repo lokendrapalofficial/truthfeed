@@ -15,6 +15,26 @@ interface TopStoriesProps {
   isConflicting: (article: any) => boolean;
 }
 
+const getCategoryTextColor = (category: string) => {
+  const cat = (category || "").toLowerCase();
+  if (cat.includes("politic") || cat.includes("world") || cat.includes("global")) {
+    return "text-rose-600 dark:text-rose-450";
+  }
+  if (cat.includes("tech") || cat.includes("science")) {
+    return "text-violet-600 dark:text-violet-400";
+  }
+  if (cat.includes("sport") || cat.includes("cricket")) {
+    return "text-emerald-600 dark:text-emerald-400";
+  }
+  if (cat.includes("business") || cat.includes("market") || cat.includes("finance")) {
+    return "text-sky-600 dark:text-sky-400";
+  }
+  if (cat.includes("entertain")) {
+    return "text-pink-600 dark:text-pink-400";
+  }
+  return "text-indigo-650 dark:text-indigo-400";
+};
+
 export default function TopStories({
   activeCategory,
   categoryLabel,
@@ -89,16 +109,14 @@ export default function TopStories({
                     isThematic={heroArticle.isThematic}
                     className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
                   />
-                  {/* Category overlay chip */}
-                  <div className="absolute top-3 left-3 flex items-center gap-2">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-300 bg-white/90 dark:bg-slate-900/90 backdrop-blur-sm border border-indigo-100 dark:border-indigo-800 px-2 py-0.5 rounded-full">
-                      {heroArticle.analysis?.category || getArticleCategory(heroArticle.title, heroArticle.summary)}
-                    </span>
-                  </div>
                 </div>
 
                 {/* Card Body */}
                 <div className="flex flex-col flex-1 p-5 gap-3">
+                  {/* Category Tracker directly above headline */}
+                  <span className={`text-[10px] font-extrabold uppercase tracking-widest ${getCategoryTextColor(heroArticle.analysis?.category || getArticleCategory(heroArticle.title, heroArticle.summary))}`}>
+                    {heroArticle.analysis?.category || getArticleCategory(heroArticle.title, heroArticle.summary)}
+                  </span>
                   <h3 className="text-2xl md:text-3xl font-serif font-extrabold text-slate-900 dark:text-slate-100 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 leading-tight transition-colors">
                     {heroArticle.title}
                   </h3>
@@ -134,22 +152,23 @@ export default function TopStories({
 
         {/* ── RIGHT: Sidebar stack of 3 secondary stories ── */}
         {stackArticles.length > 0 && (
-          <div className="flex flex-col gap-3">
-            {stackArticles.map((article) => {
+          <div className="flex flex-col divide-y divide-slate-100 dark:divide-slate-800/80">
+            {stackArticles.map((article, index) => {
               const smartDate = formatSmartDate(article.publishedAt);
+              const category = article.analysis?.category || getArticleCategory(article.title, article.summary);
               return (
                 <Link
                   key={article.id}
                   href={`/article/${article.id}`}
-                  className="group flex flex-col justify-between bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-xl p-4 hover:border-slate-300 dark:hover:border-slate-600 hover:shadow-md transition-all duration-200 min-h-[110px]"
+                  className={`group flex flex-col justify-between py-4 px-3 hover:bg-slate-50/60 dark:hover:bg-slate-800/40 rounded-xl transition-all duration-200 ${index === 0 ? 'pt-2' : ''} ${index === stackArticles.length - 1 ? 'pb-2' : ''} -mx-3`}
                 >
                   {/* Top meta row */}
-                  <div className="flex items-center gap-1.5 flex-wrap mb-2">
-                    <span className="text-[9px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">
-                      {article.analysis?.category || getArticleCategory(article.title, article.summary)}
+                  <div className="flex items-center gap-1.5 flex-wrap mb-1.5">
+                    <span className={`text-[9px] font-extrabold uppercase tracking-widest ${getCategoryTextColor(category)}`}>
+                      {category}
                     </span>
                     <span className="text-slate-300 dark:text-slate-600 text-[9px]">·</span>
-                    <span className="text-[9px] font-semibold text-slate-400 dark:text-slate-500">
+                    <span className="text-[9px] font-semibold text-slate-450 dark:text-slate-500">
                       {getEstimatedOutletsCount(article)} Outlets Tracking
                     </span>
                     {isConflicting(article) && (
@@ -166,12 +185,12 @@ export default function TopStories({
                   </div>
 
                   {/* Headline */}
-                  <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 line-clamp-2 leading-snug transition-colors flex-1">
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 line-clamp-2 leading-snug transition-colors flex-1 mb-2">
                     {article.title}
                   </h3>
 
                   {/* Source footer */}
-                  <div className="text-[10px] font-bold uppercase tracking-widest text-slate-405 dark:text-slate-500 mt-2">
+                  <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-550">
                     {article.sourceName}
                   </div>
                 </Link>
