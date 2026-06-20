@@ -230,7 +230,10 @@ export default function TransparencyCard({ article, viewMode = "grid", isBookmar
 
   if (viewMode === "list") {
     return (
-      <article className="group flex gap-4 items-start py-4 px-4 md:px-0 border-b border-slate-100 dark:border-slate-800 last:border-0">
+      <article className="relative group flex gap-4 items-start py-4 px-4 md:px-0 border-b border-slate-100 dark:border-slate-800 last:border-0">
+        {/* Invisible overlay link for whole card clickability */}
+        <Link href={`/article/${article.id}`} className="absolute inset-0 z-10" aria-label={article.title} />
+
         {/* Thumbnail */}
         <div className="w-20 h-20 shrink-0 overflow-hidden rounded-lg bg-slate-100 dark:bg-slate-800 relative">
           <NewsImage
@@ -244,7 +247,7 @@ export default function TransparencyCard({ article, viewMode = "grid", isBookmar
           />
           <button
             onClick={handleBookmarkClick}
-            className="absolute top-1 right-1 p-1 rounded-full bg-white/80 dark:bg-slate-900/80 hover:bg-white dark:hover:bg-slate-900 text-slate-650 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 shadow-sm border border-slate-200/50 dark:border-slate-800/50 transition-all z-10 cursor-pointer scale-90"
+            className="absolute top-1 right-1 p-1 rounded-full bg-white/80 dark:bg-slate-900/80 hover:bg-white dark:hover:bg-slate-900 text-slate-650 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 shadow-sm border border-slate-200/50 dark:border-slate-800/50 transition-all z-20 cursor-pointer scale-90"
             title={bookmarked ? "Remove Bookmark" : "Bookmark Story"}
           >
             <BookmarkIcon className={`h-3.5 w-3.5 ${bookmarked ? "fill-blue-600 dark:fill-blue-500 text-blue-600 dark:text-blue-500" : ""}`} />
@@ -273,15 +276,13 @@ export default function TransparencyCard({ article, viewMode = "grid", isBookmar
           </div>
 
           {/* Headline */}
-          <Link href={`/article/${article.id}`}>
-            <h3 className="font-serif font-bold text-base text-slate-900 dark:text-slate-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors leading-snug line-clamp-2">
-              {article.title}
-            </h3>
-          </Link>
+          <h3 className="font-serif font-bold text-base text-slate-900 dark:text-slate-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors leading-snug line-clamp-2">
+            {article.title}
+          </h3>
 
 
           {/* Explain Simply Button */}
-          <div className="mt-1">
+          <div className="mt-1 relative z-20">
             <button
               onClick={handleExplainSimply}
               className="inline-flex items-center gap-1.5 text-[10px] font-semibold font-mono uppercase tracking-wider text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 transition-colors cursor-pointer"
@@ -328,7 +329,7 @@ export default function TransparencyCard({ article, viewMode = "grid", isBookmar
       <Link href={`/article/${article.id}`} className="absolute inset-0 z-10" aria-label={article.title} />
 
       {/* Thumbnail */}
-      <div className="w-20 h-20 md:w-full md:aspect-video overflow-hidden rounded-lg md:rounded-none bg-slate-100 dark:bg-slate-800 relative shrink-0 order-2 md:order-1 ml-4 md:ml-0 self-center md:self-auto shadow-sm md:shadow-none z-20">
+      <div className="w-20 h-20 md:w-full md:aspect-video overflow-hidden rounded-lg md:rounded-none bg-slate-100 dark:bg-slate-800 relative shrink-0 order-2 md:order-1 ml-4 md:ml-0 self-center md:self-auto shadow-sm md:shadow-none">
         <NewsImage
           url={article.url}
           title={article.title}
@@ -348,9 +349,9 @@ export default function TransparencyCard({ article, viewMode = "grid", isBookmar
       </div>
 
       {/* Card Body */}
-      <div className="flex flex-col flex-1 p-0 md:p-4 gap-2.5 md:gap-3 order-1 md:order-2 min-w-0 w-full relative z-20">
+      <div className="flex flex-col flex-1 p-0 md:p-4 gap-2.5 md:gap-3 order-1 md:order-2 min-w-0 w-full relative">
         {/* Meta Row (Ground News Swipeable Tray) */}
-        <div className="flex items-center gap-2 overflow-x-auto whitespace-nowrap scrollbar-hide pb-0.5 max-w-full">
+        <div className="flex items-center gap-2 overflow-x-auto whitespace-nowrap scrollbar-hide pb-0.5 max-w-full relative z-20">
           <span className="text-[10px] font-mono font-bold text-slate-500 dark:text-slate-450 uppercase tracking-wider bg-slate-100 dark:bg-slate-800/60 px-2 py-0.5 rounded shrink-0">
             {article.sourceName}
           </span>
@@ -384,7 +385,7 @@ export default function TransparencyCard({ article, viewMode = "grid", isBookmar
         </div>
 
         {/* Divider */}
-        <div className="border-t border-slate-100 dark:border-slate-800/60 pt-2 mt-auto">
+        <div className="border-t border-slate-100 dark:border-slate-800/60 pt-2 mt-auto relative z-20">
           {/* Explain Simply Button */}
           <button
             onClick={handleExplainSimply}
