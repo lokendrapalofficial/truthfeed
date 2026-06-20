@@ -80,8 +80,16 @@ export default function NewsImage({
   const initials = getInitials(sourceName);
   const fallbackLogoUrl = `https://logo.clearbit.com/${domain}`;
 
+  const isMockup = typeof imageUrl === "string" && (
+    imageUrl.includes("unsplash.com") ||
+    imageUrl.includes("pixabay.com") ||
+    imageUrl.includes("pexels.com") ||
+    isThematic
+  );
+
   const isValidUrl = typeof imageUrl === "string" && 
-    (imageUrl.startsWith("http://") || imageUrl.startsWith("https://") || imageUrl.startsWith("/"));
+    (imageUrl.startsWith("http://") || imageUrl.startsWith("https://") || imageUrl.startsWith("/")) &&
+    !isMockup;
 
   // ── Branch 1: Logo display (isLogo=true, image present, no error) ──
   if (isLogo && imageUrl && isValidUrl && !imageError) {

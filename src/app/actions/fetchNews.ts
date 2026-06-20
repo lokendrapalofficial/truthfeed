@@ -706,6 +706,15 @@ export async function fetchNews(region?: string) {
             }
           }
 
+          // Filter out stock/mockup images (from Unsplash, Pixabay, Pexels)
+          if (imageUrl && (
+            imageUrl.includes("unsplash.com") ||
+            imageUrl.includes("pixabay.com") ||
+            imageUrl.includes("pexels.com")
+          )) {
+            imageUrl = null;
+          }
+
           // STEP 4: Fallback to logo
           if (!imageUrl) {
             isLogo = true;
